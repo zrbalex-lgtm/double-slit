@@ -21,24 +21,12 @@
   const CAPTIONS = [
     'Волна света подходит к двум щелям',
     'Из каждой щели расходится своя волна',
-    'Светлое — гребень, тёмное — впадина',
-    'Гребень + гребень = усиление',
-    'Гребень + впадина = гашение',
-    'Усиление и гашение идут лучами',
     'На экране — чередование полос'
   ];
 
   // Wave amplitude falls off with distance from the slit
   function amp(r) {
     return 1 / Math.sqrt(1 + r / 60);
-  }
-
-  // Intersection of circle radius a around slit 1 and radius b around slit 2 (right side only)
-  function intersect(a, b) {
-    const p = (a * a - b * b + D * D) / (2 * D);
-    const h2 = a * a - p * p;
-    if (h2 < 0) return null;
-    return { x: BX + Math.sqrt(h2), y: Y1 + p };
   }
 
   Scenes.register('waves', function (canvas, captionEl) {
@@ -90,14 +78,8 @@
 
     let step = 0;
     let t = 0;
-    let patternT0 = 0;
-
-    // Slow motion while explaining crests and points
-    function speedFor(s) {
-      if (s <= 1) return 1;
-      if (s <= 4) return 0.4;
-      return 0.8;
-    }
+    let patternT0 = 0;      // sim time when the pattern starts to fade in
+    const T_ARRIVE = SX / C; // sim time when the wave reaches the screen
 
     function renderField() {
       const front = C * t;      // plane-wave front x
@@ -147,95 +129,8 @@
       ctx.drawImage(off, 0, 0, gw, gh, 0, 0, gw * CELL, gh * CELL);
     }
 
-    // Radii (from a slit) where the wave phase equals `offset`, inside the reached zone
-    function radiiAt(offset, R) {
-      let r0 = ((offset + OMEGA * t) / K - BX) % LAM;
-      if (r0 < 0) r0 += LAM;
-      const out = [];
-      for (let r = r0; r < R - EDGE * 0.5; r += LAM) out.push(r);
-      return out;
-    }
-
-    function eachPair(as, bs, fn) {
-      for (const a of as) {
-        for (const b of bs) {
-          if (Math.abs(a - b) >= D) continue;
-          const p = intersect(a, b);
-          if (p && p.x > BX + 12 && p.x < SX - 10 && p.y > 0 && p.y < H) fn(p);
-        }
-      }
-    }
-
-    function drawPoints() {
-      const R = C * t - BX;
-      if (R <= 0) return;
-      const crest = radiiAt(Math.PI / 2, R);
-      const trough = radiiAt(-Math.PI / 2, R);
-
-      if (step >= 4) {
-        ctx.save();
-        ctx.strokeStyle = 'rgba(255, 90, 90, 0.85)';
-        ctx.lineWidth = 2.5;
-        const ring = function (p) {
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
-          ctx.stroke();
-        };
-        eachPair(crest, trough, ring);
-        eachPair(trough, crest, ring);
-        ctx.restore();
-      }
-
-      ctx.save();
-      ctx.fillStyle = '#ffd54a';
-      ctx.shadowColor = '#ffb300';
-      ctx.shadowBlur = 14;
-      eachPair(crest, crest, function (p) {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      ctx.restore();
-    }
-
-    // Curve where r1 - r2 = delta (a hyperbola), clipped to the region before the screen
-    function hyperbola(delta) {
-      ctx.beginPath();
-      let started = false;
-      for (let s = Math.abs(delta); s < 1600; s += 4) {
-        const p = intersect(s, s - delta);
-        if (!p || p.x > SX - 4) {
-          if (started) break;
-          continue;
-        }
-        if (!started) {
-          ctx.moveTo(p.x, p.y);
-          started = true;
-        } else {
-          ctx.lineTo(p.x, p.y);
-        }
-      }
-      ctx.stroke();
-    }
-
-    function drawRays() {
-      ctx.save();
-      ctx.lineWidth = 3;
-      ctx.setLineDash([14, 10]);
-      ctx.strokeStyle = 'rgba(255, 213, 74, 0.9)';
-      for (let m = -3; m <= 3; m++) hyperbola(m * LAM);
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 10]);
-      ctx.strokeStyle = 'rgba(255, 90, 90, 0.75)';
-      for (let m = -4; m <= 3; m++) {
-        const d = (m + 0.5) * LAM;
-        if (Math.abs(d) < D) hyperbola(d);
-      }
-      ctx.restore();
-    }
-
-    function drawPattern(now) {
-      const p = Math.min(1, (now - patternT0) / 1200);
+    function drawPattern() {
+      const p = Math.max(0, Math.min(1, (t - patternT0) / 1.5));
       for (let y = 0; y < H; y += 2) {
         ctx.fillStyle = 'rgba(215, 245, 255,' + (prof[y] * p).toFixed(3) + ')';
         ctx.fillRect(SX, y, SW, 2);
@@ -271,33 +166,36 @@
       drawLabel(ctx, 'экран', SX + SW / 2, 40);
     }
 
-    function draw(now) {
+    function draw() {
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, W, H);
       renderField();
       drawSetup();
-      if (step >= 5) drawRays();
-      if (step >= 3) drawPoints();
-      if (step >= 6) drawPattern(now);
+      if (step >= 2) drawPattern();
     }
 
-    const loop = makeLoop(function (dt, now) {
-      if (step >= 1) t += dt * speedFor(step);
-      draw(now);
+    const loop = makeLoop(function (dt) {
+      if (step >= 1) t += dt;
+      draw();
     });
 
     function setStep(s) {
       if (s === step) return;
-      if (s <= 1) t = 0;
-      // Entering mid-sequence (e.g. navigating back): show a fully developed field
-      if (s >= 2 && step === 0) t = Math.max(t, 9);
-      if (s >= 6 && step < 6) patternT0 = performance.now();
+      if (s === 0 || (s === 1 && step === 0)) t = 0;
+      if (s >= 2 && step === 0) {
+        // Entering mid-sequence (e.g. navigating back): fully developed field and pattern
+        t = T_ARRIVE + 2;
+        patternT0 = 0;
+      } else if (s >= 2 && step < 2) {
+        // Pattern fades in on click, but never before the wave reaches the screen
+        patternT0 = Math.max(t, T_ARRIVE);
+      }
       step = s;
       captionEl.textContent = CAPTIONS[Math.min(s, CAPTIONS.length - 1)];
     }
 
     captionEl.textContent = CAPTIONS[0];
-    draw(performance.now());
+    draw();
 
     return { start: loop.start, stop: loop.stop, setStep: setStep };
   });

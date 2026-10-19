@@ -1,19 +1,34 @@
-/* Scene 5: electrons one by one, hits accumulate into an interference pattern */
+/* Scene 5: electrons one by one, seen in perspective from behind and above the gun.
+   Hits accumulate on the screen into an interference pattern. */
 (function () {
   'use strict';
 
   const W = 1600, H = 900;
-  const YC = H / 2;
-  const GUN_X = 170;          // gun muzzle x
-  const BX = 430;             // barrier x
-  const SCR_X = 720;          // side-view screen x
-  const D = 120;              // slit separation (side view)
-  const SLIT = 14;
-  const PX = 800, PY = 70, PW = 760, PH = 760;   // front-view screen panel
-  const PERIOD = 86;          // fringe period on the screen, px
-  const ENV = 4;              // single-slit envelope first zero, in fringe periods
-  const MAX_HITS = 12000;
-  const RATES = [0, 0.9, 12, 650, 650];          // electrons per second by step
+
+  // World layout: x to the right, y up (floor at 0), z along the beam
+  const Z_GUN = 2.8;               // gun muzzle
+  const Z_BAR = 6;                 // barrier plane
+  const Z_SCR = 14;                // screen plane
+  const BEAM_Y = 1.4;              // beam height
+  const SCR_W = 12, SCR_H = 5.5;     // screen size, centered at x = 0, standing on the floor
+  const BAR_W = 8, BAR_H = 2.6, BAR_T = 0.18;
+  const SLIT_X = 0.55;             // slit centers at x = +-SLIT_X
+  const SLIT_W = 0.16;
+  const SLIT_Y0 = 0.45, SLIT_Y1 = 2.25;
+
+  // Camera behind and above the gun, looking down the beam
+  // Camera is shifted sideways without turning, so sides of objects show and screen rows stay horizontal
+  const CAM = { x: -3.2, y: 9.5, z: -8 };
+  const PITCH_TARGET = { y: 1.2, z: 11 };
+  const FOCAL = 1250;
+  let CX = W / 2, CY = 385;
+
+  // Hit texture mapped onto the screen; fringes run vertically, pattern varies along x
+  const TW = 960, TH = 480;
+  const PERIOD = 78;               // fringe period in texture px
+  const ENV = 4;                   // single-slit envelope first zero, in fringe periods
+  const MAX_HITS = 14000;
+  const RATES = [0, 0.9, 12, 700, 700];   // electrons per second by step
 
   const CAPTIONS = [
     'Стреляем электронами по одному',
@@ -23,30 +38,57 @@
     'Та же картина, что у волн: интерференция'
   ];
 
-  // Two-slit pattern with single-slit envelope, dy measured from the center
-  function intensity(dy) {
-    const c = Math.cos(Math.PI * dy / PERIOD);
-    const z = Math.PI * dy / (PERIOD * ENV);
+  // Camera basis (no yaw): right = +x, forward and up tilted by the pitch
+  const fwd = (function () {
+    const dy = PITCH_TARGET.y - CAM.y, dz = PITCH_TARGET.z - CAM.z;
+    const l = Math.hypot(dy, dz);
+    return { x: 0, y: dy / l, z: dz / l };
+  })();
+  const up = { x: 0, y: fwd.z, z: -fwd.y };
+
+  function project(x, y, z) {
+    const dx = x - CAM.x, dy = y - CAM.y, dz = z - CAM.z;
+    const zc = dx * fwd.x + dy * fwd.y + dz * fwd.z;
+    const yc = dy * up.y + dz * up.z;
+    const s = FOCAL / zc;
+    return { x: CX + dx * s, y: CY - yc * s, s: s };
+  }
+
+  // Lens shift: put the screen center in the middle of the frame
+  CX -= project(0, SCR_H / 2, Z_SCR).x - W / 2;
+
+  // Two-slit pattern with single-slit envelope, dx measured from the center in texture px
+  function intensity(dx) {
+    const c = Math.cos(Math.PI * dx / PERIOD);
+    const z = Math.PI * dx / (PERIOD * ENV);
     const s = z === 0 ? 1 : Math.sin(z) / z;
     return c * c * s * s;
   }
 
-  // Rejection sampling of the hit position
-  function sampleDy() {
+  // Rejection sampling of the hit position across the screen
+  function sampleDx() {
     for (;;) {
-      const dy = (Math.random() * 2 - 1) * PH / 2;
-      if (Math.random() < intensity(dy)) return dy;
+      const dx = (Math.random() * 2 - 1) * TW / 2;
+      if (Math.random() < intensity(dx)) return dx;
     }
+  }
+
+  // Texture px -> world point on the screen surface
+  function texToWorld(tx, ty) {
+    return {
+      x: -SCR_W / 2 + SCR_W * tx / TW,
+      y: SCR_H * (1 - ty / TH),
+      z: Z_SCR - 0.01
+    };
   }
 
   Scenes.register('electrons', function (canvas, captionEl) {
     const ctx = canvas.getContext('2d');
 
-    // Persistent layer with all hits
-    const layer = document.createElement('canvas');
-    layer.width = PW;
-    layer.height = PH;
-    const lctx = layer.getContext('2d');
+    const tex = document.createElement('canvas');
+    tex.width = TW;
+    tex.height = TH;
+    const tctx = tex.getContext('2d');
 
     let step = 0;
     let count = 0;
@@ -55,36 +97,206 @@
     let flights = [];   // electrons in flight (steps 1-2)
     let recent = [];    // fresh hits shown with a flash
 
+    // ---------- drawing helpers ----------
+
+    function poly(pts, fill, stroke) {
+      ctx.beginPath();
+      pts.forEach(function (p, i) {
+        const q = project(p[0], p[1], p[2]);
+        if (i === 0) ctx.moveTo(q.x, q.y);
+        else ctx.lineTo(q.x, q.y);
+      });
+      ctx.closePath();
+      if (fill) {
+        ctx.fillStyle = fill;
+        ctx.fill();
+      }
+      if (stroke) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+
+    // Axis-aligned box: draws only faces visible from the camera (sides, top, back face toward camera)
+    function box(x0, x1, y0, y1, z0, z1, col) {
+      const edge = col.edge || null;
+      if (CAM.x < x0) poly([[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]], col.side, edge);
+      if (CAM.x > x1) poly([[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]], col.side, edge);
+      if (CAM.y > y1) poly([[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], col.top, edge);
+      poly([[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]], col.front, edge);
+    }
+
+    function drawFloor() {
+      ctx.save();
+      ctx.lineWidth = 1;
+      for (let x = -9; x <= 9; x += 1) {
+        const a = project(x, 0, -1.5), b = project(x, 0, Z_SCR + 2);
+        ctx.strokeStyle = 'rgba(90, 110, 140, 0.18)';
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+      for (let z = -1; z <= Z_SCR + 2; z += 1) {
+        const a = project(-9, 0, z), b = project(9, 0, z);
+        ctx.strokeStyle = 'rgba(90, 110, 140, 0.18)';
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    const SCREEN_COL = { front: '#05080d', top: '#3a4458', side: '#2a3242', edge: '#3a4458' };
+    const BAR_COL = { front: '#7d879b', top: '#a9b3c6', side: '#5c6578', edge: 'rgba(0,0,0,0.35)' };
+    const GUN_COL = { front: '#4a5468', top: '#6b778f', side: '#3a4252', edge: 'rgba(0,0,0,0.4)' };
+
+    function drawScreen() {
+      const hw = SCR_W / 2;
+      box(-hw - 0.15, hw + 0.15, 0, SCR_H + 0.15, Z_SCR, Z_SCR + 0.25, SCREEN_COL);
+      // Map the hit texture onto the screen row by row (rows stay horizontal: camera has no yaw)
+      const ROW = 3;
+      for (let j = 0; j < TH; j += ROW) {
+        const a = texToWorld(0, j), b = texToWorld(0, j + ROW);
+        const pl = project(-hw, a.y, Z_SCR);
+        const pr = project(hw, a.y, Z_SCR);
+        const pb = project(-hw, b.y, Z_SCR);
+        ctx.drawImage(tex, 0, j, TW, ROW, pl.x, pl.y, pr.x - pl.x, pb.y - pl.y + 0.7);
+      }
+    }
+
+    function drawBarrier() {
+      const hw = BAR_W / 2;
+      const z0 = Z_BAR, z1 = Z_BAR + BAR_T;
+      const sl = SLIT_W / 2;
+      // Draw outer blocks first so inner side faces overlap correctly
+      box(-hw, -SLIT_X - sl, 0, BAR_H, z0, z1, BAR_COL);
+      box(SLIT_X + sl, hw, 0, BAR_H, z0, z1, BAR_COL);
+      box(-SLIT_X + sl, SLIT_X - sl, 0, BAR_H, z0, z1, BAR_COL);
+      // Bridges below and above each slit
+      [-SLIT_X, SLIT_X].forEach(function (cx) {
+        box(cx - sl, cx + sl, 0, SLIT_Y0, z0, z1, BAR_COL);
+        box(cx - sl, cx + sl, SLIT_Y1, BAR_H, z0, z1, BAR_COL);
+      });
+    }
+
+    function drawGun() {
+      // Far to near: nozzle, stand, body
+      box(-0.15, 0.15, BEAM_Y - 0.15, BEAM_Y + 0.15, Z_GUN, Z_GUN + 0.35, GUN_COL);
+      box(-0.15, 0.15, 0, BEAM_Y - 0.35, Z_GUN - 0.9, Z_GUN - 0.5, GUN_COL);
+      box(-0.4, 0.4, BEAM_Y - 0.35, BEAM_Y + 0.35, Z_GUN - 1.6, Z_GUN, GUN_COL);
+    }
+
+    function drawFlights(now) {
+      ctx.save();
+      ctx.fillStyle = '#7fffb0';
+      ctx.shadowColor = '#7fffb0';
+      ctx.shadowBlur = 18;
+      for (const f of flights) {
+        // Visible only up to the slits: which way it went is unknown
+        const p = (now - f.born) / (f.dur * 0.55);
+        if (p > 1) continue;
+        ctx.globalAlpha = p > 0.8 ? (1 - p) / 0.2 : 1;
+        const q = project(0, BEAM_Y, Z_GUN + 0.35 + (Z_BAR - Z_GUN - 0.5) * p);
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, Math.max(3, 0.12 * q.s), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function drawRecent(now) {
+      ctx.save();
+      ctx.lineWidth = 3;
+      for (const r of recent) {
+        const a = 1 - (now - r.born) / 700;
+        const w = texToWorld(r.tx, r.ty);
+        const q = project(w.x, w.y, w.z);
+        ctx.strokeStyle = 'rgba(127, 255, 176,' + a.toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, (0.08 + (1 - a) * 0.3) * q.s, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawCurve(now) {
+      const p = Math.min(1, (now - curveT0) / 1500);
+      ctx.save();
+      ctx.beginPath();
+      for (let tx = 0; tx <= TW; tx += 3) {
+        const x = -SCR_W / 2 + SCR_W * tx / TW;
+        const y = 0.1 + intensity(tx - TW / 2) * SCR_H * 0.85 * p;
+        const q = project(x, y, Z_SCR - 0.05);
+        if (tx === 0) ctx.moveTo(q.x, q.y);
+        else ctx.lineTo(q.x, q.y);
+      }
+      ctx.strokeStyle = 'rgba(255, 213, 74, 0.95)';
+      ctx.lineWidth = 4;
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 8;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawLabels() {
+      const g = project(-0.6, BEAM_Y, Z_GUN - 0.8);
+      drawLabel(ctx, 'пушка', g.x, g.y, 'right');
+      const b = project(-BAR_W / 2, BAR_H + 0.5, Z_BAR);
+      drawLabel(ctx, 'две щели', b.x, b.y, 'left');
+      const s = project(-SCR_W / 2, SCR_H + 0.55, Z_SCR);
+      drawLabel(ctx, 'экран', s.x, s.y, 'left');
+      if (count > 0) {
+        const c = project(SCR_W / 2, SCR_H + 0.55, Z_SCR);
+        drawLabel(ctx, 'электронов: ' + count, c.x, c.y, 'right', '#cfe9da');
+      }
+    }
+
+    function draw(now) {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+      // Painter's order: far to near
+      drawFloor();
+      drawScreen();
+      drawRecent(now);
+      if (step >= 4) drawCurve(now);
+      drawBarrier();
+      drawFlights(now);
+      drawGun();
+      drawLabels();
+    }
+
+    // ---------- simulation ----------
+
     function clearAll() {
-      lctx.clearRect(0, 0, PW, PH);
+      tctx.clearRect(0, 0, TW, TH);
       count = 0;
       acc = 0;
       flights = [];
       recent = [];
     }
 
-    function addHit(dy, now, flash) {
-      const x = 6 + Math.random() * (PW - 12);
-      const y = PH / 2 + dy;
-      lctx.fillStyle = 'rgba(205, 255, 228, 0.85)';
-      lctx.beginPath();
-      lctx.arc(x, y, 2.3, 0, Math.PI * 2);
-      lctx.fill();
+    function addHit(now, flash) {
+      const tx = TW / 2 + sampleDx();
+      const ty = 10 + Math.random() * (TH - 20);
+      tctx.fillStyle = 'rgba(205, 255, 228, 0.9)';
+      tctx.beginPath();
+      tctx.arc(tx, ty, 2.4, 0, Math.PI * 2);
+      tctx.fill();
       count++;
-      if (flash) recent.push({ x: x, y: y, dy: dy, born: now });
+      if (flash) recent.push({ tx: tx, ty: ty, born: now });
     }
 
     function prefill(total) {
-      while (count < total) addHit(sampleDy(), 0, false);
+      while (count < total) addHit(0, false);
     }
 
     function spawn(now) {
       if (count + flights.length >= MAX_HITS) return false;
-      if (step <= 2) {
-        flights.push({ born: now, dur: step === 1 ? 700 : 320, dy: sampleDy() });
-      } else {
-        addHit(sampleDy(), now, false);
-      }
+      if (step <= 2) flights.push({ born: now, dur: step === 1 ? 800 : 360 });
+      else addHit(now, false);
       return true;
     }
 
@@ -102,7 +314,7 @@
       const still = [];
       for (const f of flights) {
         if (now - f.born >= f.dur) {
-          addHit(f.dy, now, true);
+          addHit(now, true);
           Sfx.click(step === 1 ? 0.7 : 0.35);
         } else {
           still.push(f);
@@ -110,110 +322,6 @@
       }
       flights = still;
       recent = recent.filter(function (r) { return now - r.born < 700; });
-    }
-
-    function drawSetup() {
-      // Gun
-      ctx.fillStyle = '#3a4252';
-      ctx.fillRect(60, YC - 32, GUN_X - 70, 64);
-      ctx.fillRect(GUN_X - 12, YC - 12, 12, 24);
-      drawLabel(ctx, 'пушка', 115, YC + 62);
-
-      // Barrier with two slits
-      ctx.fillStyle = '#8d97ab';
-      const y1 = YC - D / 2, y2 = YC + D / 2;
-      ctx.fillRect(BX - 5, PY, 10, y1 - SLIT / 2 - PY);
-      ctx.fillRect(BX - 5, y1 + SLIT / 2, 10, y2 - y1 - SLIT);
-      ctx.fillRect(BX - 5, y2 + SLIT / 2, 10, PY + PH - y2 - SLIT / 2);
-      drawLabel(ctx, 'две щели', BX, 40);
-
-      // Side-view screen
-      ctx.fillStyle = '#2a3040';
-      ctx.fillRect(SCR_X, PY, 10, PH);
-      drawLabel(ctx, 'экран', SCR_X + 5, 40);
-
-      // Connectors to the front-view panel
-      ctx.save();
-      ctx.strokeStyle = 'rgba(140, 155, 180, 0.45)';
-      ctx.setLineDash([6, 8]);
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(SCR_X + 10, PY);
-      ctx.lineTo(PX, PY);
-      ctx.moveTo(SCR_X + 10, PY + PH);
-      ctx.lineTo(PX, PY + PH);
-      ctx.stroke();
-      ctx.restore();
-
-      // Front-view panel
-      ctx.fillStyle = '#05080d';
-      ctx.fillRect(PX, PY, PW, PH);
-      ctx.strokeStyle = '#2a3040';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(PX, PY, PW, PH);
-      drawLabel(ctx, 'экран — вид спереди', PX + PW / 2, 40);
-    }
-
-    function drawFlights(now) {
-      ctx.save();
-      ctx.fillStyle = '#7fffb0';
-      ctx.shadowColor = '#7fffb0';
-      ctx.shadowBlur = 16;
-      for (const f of flights) {
-        // Visible only up to the slits: which way it went is unknown
-        const p = (now - f.born) / (f.dur * 0.55);
-        if (p > 1) continue;
-        ctx.globalAlpha = p > 0.8 ? (1 - p) / 0.2 : 1;
-        ctx.beginPath();
-        ctx.arc(GUN_X + (BX - 12 - GUN_X) * p, YC, 7, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-    }
-
-    function drawRecent(now) {
-      ctx.save();
-      for (const r of recent) {
-        const a = 1 - (now - r.born) / 700;
-        ctx.strokeStyle = 'rgba(127, 255, 176,' + a.toFixed(3) + ')';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(PX + r.x, PY + r.y, 6 + (1 - a) * 18, 0, Math.PI * 2);
-        ctx.stroke();
-        // Matching flash on the side-view screen
-        ctx.fillStyle = 'rgba(127, 255, 176,' + a.toFixed(3) + ')';
-        ctx.fillRect(SCR_X - 4, YC + r.dy - 3, 18, 6);
-      }
-      ctx.restore();
-    }
-
-    function drawCurve(now) {
-      const p = Math.min(1, (now - curveT0) / 1500);
-      ctx.save();
-      ctx.beginPath();
-      for (let dy = -PH / 2; dy <= PH / 2; dy += 2) {
-        const x = PX + 10 + intensity(dy) * PW * 0.55 * p;
-        const y = YC + dy;
-        if (dy === -PH / 2) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.strokeStyle = 'rgba(255, 213, 74, 0.95)';
-      ctx.lineWidth = 4;
-      ctx.shadowColor = '#000';
-      ctx.shadowBlur = 8;
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    function draw(now) {
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, W, H);
-      drawSetup();
-      ctx.drawImage(layer, PX, PY);
-      drawFlights(now);
-      drawRecent(now);
-      if (step >= 4) drawCurve(now);
-      if (count > 0) drawLabel(ctx, 'электронов: ' + count, PX + 16, PY + 30, 'left', '#cfe9da');
     }
 
     const loop = makeLoop(function (dt, now) {
@@ -225,7 +333,7 @@
       if (s === step) return;
       if (s === 0) clearAll();
       // Entering mid-sequence (e.g. navigating back): show an accumulated pattern
-      if (s >= 3 && step === 0) prefill(9000);
+      if (s >= 3 && step === 0) prefill(10000);
       if (s >= 4 && step < 4) curveT0 = performance.now();
       step = s;
       captionEl.textContent = CAPTIONS[Math.min(s, CAPTIONS.length - 1)];
