@@ -1,5 +1,6 @@
-/* Scene 5: electrons one by one, seen in perspective from behind and above the gun.
-   Hits accumulate on the screen into an interference pattern. */
+/* Electron scenes in perspective from behind and above the gun.
+   Scene 5 ('electrons'): hits build up an interference pattern.
+   Scene 6 ('which-path'): detectors at the slits record the path, the pattern becomes two bands. */
 (function () {
   'use strict';
 
@@ -27,16 +28,10 @@
   const TW = 960, TH = 480;
   const PERIOD = 78;               // fringe period in texture px
   const ENV = 4;                   // single-slit envelope first zero, in fringe periods
+  const SEP_PX = 115;              // which-path mode: band centers at +-SEP_PX
+  const SINGLE_PX = 165;           // which-path mode: single-slit band half width (first zero)
   const MAX_HITS = 14000;
-  const RATES = [0, 0.9, 12, 700, 700];   // electrons per second by step
-
-  const CAPTIONS = [
-    'Стреляем электронами по одному',
-    'Один электрон — одна точка',
-    'Пока похоже на случайный разброс…',
-    'Из хаоса проступают полосы',
-    'Та же картина, что у волн: интерференция'
-  ];
+  const SLOW_RATE = 5;             // below this rate each electron is shown in flight
 
   // Camera basis (no yaw): right = +x, forward and up tilted by the pitch
   const fwd = (function () {
@@ -65,11 +60,35 @@
     return c * c * s * s;
   }
 
-  // Rejection sampling of the hit position across the screen
-  function sampleDx() {
+  // One slit open (path known): a single band behind that slit
+  function single(dx) {
+    const z = Math.PI * dx / SINGLE_PX;
+    const s = z === 0 ? 1 : Math.sin(z) / z;
+    return s * s;
+  }
+
+  // Path known: two bands, normalized to peak 1
+  const BANDS_MAX = (function () {
+    let m = 0;
+    for (let dx = -TW / 2; dx <= TW / 2; dx++) m = Math.max(m, single(dx - SEP_PX) + single(dx + SEP_PX));
+    return m;
+  })();
+  function bands(dx) {
+    return (single(dx - SEP_PX) + single(dx + SEP_PX)) / BANDS_MAX;
+  }
+
+  // Rejection sampling of the hit position; slit is -1/+1 when the path is known, 0 otherwise
+  function sampleHit(detectors) {
+    if (!detectors) {
+      for (;;) {
+        const dx = (Math.random() * 2 - 1) * TW / 2;
+        if (Math.random() < intensity(dx)) return { dx: dx, slit: 0 };
+      }
+    }
+    const slit = Math.random() < 0.5 ? -1 : 1;
     for (;;) {
-      const dx = (Math.random() * 2 - 1) * TW / 2;
-      if (Math.random() < intensity(dx)) return dx;
+      const d = (Math.random() * 2 - 1) * TW / 2;
+      if (Math.random() < single(d)) return { dx: slit * SEP_PX + d, slit: slit };
     }
   }
 
@@ -82,8 +101,12 @@
     };
   }
 
-  Scenes.register('electrons', function (canvas, captionEl) {
+  // opts: { captions, rates (per step), curveStep, detectors, lampsOffStep }
+  function build(opts) {
+    return function (canvas, captionEl) {
     const ctx = canvas.getContext('2d');
+    const CAPTIONS = opts.captions;
+    const RATES = opts.rates;
 
     const tex = document.createElement('canvas');
     tex.width = TW;
@@ -94,8 +117,10 @@
     let count = 0;
     let acc = 0;
     let curveT0 = 0;
-    let flights = [];   // electrons in flight (steps 1-2)
+    let flights = [];   // electrons in flight (slow steps)
     let recent = [];    // fresh hits shown with a flash
+    const lampT = { '-1': -1e9, '1': -1e9 };   // last time each detector fired
+    const tally = { '-1': 0, '1': 0 };         // detector log: left / right counts
 
     // ---------- drawing helpers ----------
 
@@ -229,7 +254,8 @@
         const r = 0.15 + p * (Z_SCR - Z_BAR);
         const a = 0.6 * (1 - p * 0.7);
         ctx.strokeStyle = 'rgba(127, 255, 176,' + a.toFixed(3) + ')';
-        [-SLIT_X, SLIT_X].forEach(function (cx) {
+        const sources = f.slit ? [f.slit * SLIT_X] : [-SLIT_X, SLIT_X];
+        sources.forEach(function (cx) {
           ctx.beginPath();
           for (let k = 0; k <= 40; k++) {
             const ang = (k / 40 - 0.5) * RIPPLE_SPAN;
@@ -261,23 +287,70 @@
       ctx.restore();
     }
 
-    function drawCurve(now) {
-      const p = Math.min(1, (now - curveT0) / 1500);
-      ctx.save();
+    function curvePath(fn, p) {
       ctx.beginPath();
       for (let tx = 0; tx <= TW; tx += 3) {
         const x = -SCR_W / 2 + SCR_W * tx / TW;
-        const y = 0.1 + intensity(tx - TW / 2) * SCR_H * 0.85 * p;
+        const y = 0.1 + fn(tx - TW / 2) * SCR_H * 0.85 * p;
         const q = project(x, y, Z_SCR - 0.05);
         if (tx === 0) ctx.moveTo(q.x, q.y);
         else ctx.lineTo(q.x, q.y);
       }
+    }
+
+    function drawCurve(now) {
+      const p = Math.min(1, (now - curveT0) / 1500);
+      ctx.save();
+      if (opts.detectors) {
+        // Ghost of the interference curve for comparison
+        curvePath(intensity, p);
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';   // dark backing so the dashes read over dots
+        ctx.lineWidth = 7;
+        ctx.stroke();
+        ctx.setLineDash([12, 9]);
+        ctx.strokeStyle = '#8ec5ff';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      curvePath(opts.detectors ? bands : intensity, p);
       ctx.strokeStyle = 'rgba(255, 213, 74, 0.95)';
       ctx.lineWidth = 4;
       ctx.shadowColor = '#000';
       ctx.shadowBlur = 8;
       ctx.stroke();
       ctx.restore();
+    }
+
+    // Detector boxes sitting on the barrier above each slit, with a lamp that flashes on detection
+    const DET_COL = { front: '#3d4a63', top: '#56657f', side: '#2e3950', edge: 'rgba(0,0,0,0.45)' };
+    function drawDetectors(now) {
+      const lampsOn = !(opts.lampsOffStep && step >= opts.lampsOffStep);
+      [-1, 1].forEach(function (side) {
+        const cx = side * SLIT_X;
+        box(cx - 0.24, cx + 0.24, BAR_H, BAR_H + 0.38, Z_BAR - 0.3, Z_BAR + BAR_T, DET_COL);
+        const q = project(cx, BAR_H + 0.38, Z_BAR - 0.06);
+        const r = 0.13 * q.s;
+        const a = lampsOn ? Math.max(0, 1 - (now - lampT[side]) / 350) : 0;
+        ctx.save();
+        ctx.fillStyle = lampsOn ? '#4a2228' : '#262a33';
+        ctx.beginPath();
+        ctx.ellipse(q.x, q.y, r, r * 0.55, 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (a > 0) {
+          ctx.globalAlpha = a;
+          ctx.fillStyle = '#ff5a5a';
+          ctx.shadowColor = '#ff3b3b';
+          ctx.shadowBlur = 30;
+          ctx.beginPath();
+          ctx.ellipse(q.x, q.y, r * 1.2, r * 0.7, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      });
+      const t = project(BAR_W / 2, BAR_H + 0.5, Z_BAR);
+      const log = 'Л ' + tally['-1'] + '  ·  П ' + tally['1'];
+      drawLabel(ctx, (lampsOn ? 'датчики: ' : 'журнал: ') + log, t.x, t.y, 'right', '#ffb3b3');
     }
 
     function drawLabels() {
@@ -300,9 +373,10 @@
       drawFloor();
       drawScreen();
       drawRecent(now);
-      if (step >= 4) drawCurve(now);
+      if (step >= opts.curveStep) drawCurve(now);
       drawRipples(now);
       drawBarrier();
+      if (opts.detectors) drawDetectors(now);
       drawPackets(now);
       drawGun();
       drawLabels();
@@ -316,10 +390,20 @@
       acc = 0;
       flights = [];
       recent = [];
+      tally['-1'] = tally['1'] = 0;
     }
 
-    function addHit(now, flash) {
-      const tx = TW / 2 + sampleDx();
+    // Record which slit the detectors saw
+    function detect(slit, now) {
+      if (!slit) return;
+      tally[slit]++;
+      lampT[slit] = now;
+    }
+
+    function addHit(now, flash, hit) {
+      const h = hit || sampleHit(opts.detectors);
+      if (!hit) detect(h.slit, now);
+      const tx = TW / 2 + h.dx;
       const ty = 10 + Math.random() * (TH - 20);
       tctx.fillStyle = 'rgba(205, 255, 228, 0.9)';
       tctx.beginPath();
@@ -335,8 +419,14 @@
 
     function spawn(now) {
       if (count + flights.length >= MAX_HITS) return false;
-      if (step <= 2) flights.push({ born: now, dur: step === 1 ? 1300 : 600 });
-      else addHit(now, false);
+      const rate = RATES[Math.min(step, RATES.length - 1)];
+      if (rate < SLOW_RATE) {
+        flights.push({ born: now, dur: 1300, hit: sampleHit(opts.detectors), passed: false });
+      } else if (rate < 50) {
+        flights.push({ born: now, dur: 600, hit: sampleHit(opts.detectors), passed: false });
+      } else {
+        addHit(now, false);
+      }
       return true;
     }
 
@@ -348,14 +438,21 @@
         if (spawn(now)) spawned++;
       }
       // Rustle of many clicks in fast mode
-      if (step >= 3 && spawned > 0 && Math.random() < 0.7) Sfx.click(0.06 + Math.random() * 0.1);
+      if (RATES[Math.min(step, RATES.length - 1)] >= 50 && spawned > 0 && Math.random() < 0.7) {
+        Sfx.click(0.06 + Math.random() * 0.1);
+      }
 
       // Land electrons that finished their flight
       const still = [];
       for (const f of flights) {
+        // Detector fires when the packet reaches the slits
+        if (!f.passed && now - f.born >= f.dur * SPLIT) {
+          f.passed = true;
+          detect(f.hit.slit, now);
+        }
         if (now - f.born >= f.dur) {
-          addHit(now, true);
-          Sfx.click(step === 1 ? 0.7 : 0.35);
+          addHit(now, true, f.hit);
+          Sfx.click(f.dur > 1000 ? 0.7 : 0.35);
         } else {
           still.push(f);
         }
@@ -373,8 +470,8 @@
       if (s === step) return;
       if (s === 0) clearAll();
       // Entering mid-sequence (e.g. navigating back): show an accumulated pattern
-      if (s >= 3 && step === 0) prefill(10000);
-      if (s >= 4 && step < 4) curveT0 = performance.now();
+      if (step === 0 && s > 0 && RATES[Math.min(s, RATES.length - 1)] >= 50) prefill(10000);
+      if (s >= opts.curveStep && step < opts.curveStep) curveT0 = performance.now();
       step = s;
       captionEl.textContent = CAPTIONS[Math.min(s, CAPTIONS.length - 1)];
     }
@@ -383,5 +480,33 @@
     draw(performance.now());
 
     return { start: loop.start, stop: loop.stop, setStep: setStep };
-  });
+    };
+  }
+
+  Scenes.register('electrons', build({
+    captions: [
+      'Стреляем электронами по одному',
+      'Один электрон — одна точка',
+      'Пока похоже на случайный разброс…',
+      'Из хаоса проступают полосы',
+      'Та же картина, что у волн: интерференция'
+    ],
+    rates: [0, 0.9, 12, 700, 700],
+    curveStep: 4,
+    detectors: false
+  }));
+
+  Scenes.register('which-path', build({
+    captions: [
+      'Ставим у каждой щели датчик: он замечает, где прошёл электрон',
+      'Датчик всякий раз срабатывает только у одной щели',
+      'Копим тысячи электронов…',
+      'Полосы исчезли: просто две полосы, как от шариков',
+      'Никто не смотрит, датчики только пишут в журнал — полос всё равно нет'
+    ],
+    rates: [0, 0.9, 700, 700, 700],
+    curveStep: 3,
+    detectors: true,
+    lampsOffStep: 4
+  }));
 })();
