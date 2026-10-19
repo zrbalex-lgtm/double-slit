@@ -189,20 +189,59 @@
       box(-0.4, 0.4, BEAM_Y - 0.35, BEAM_Y + 0.35, Z_GUN - 1.6, Z_GUN, GUN_COL);
     }
 
-    function drawFlights(now) {
+    const SPLIT = 0.45;            // fraction of the flight spent before the barrier
+    const RIPPLE_SPAN = Math.PI * 0.55;   // angular width of ripples behind each slit
+
+    // Before the barrier: a fuzzy wave packet that spreads until it covers both slits
+    function drawPackets(now) {
       ctx.save();
-      ctx.fillStyle = '#7fffb0';
-      ctx.shadowColor = '#7fffb0';
-      ctx.shadowBlur = 18;
       for (const f of flights) {
-        // Visible only up to the slits: which way it went is unknown
-        const p = (now - f.born) / (f.dur * 0.55);
+        const p = (now - f.born) / (f.dur * SPLIT);
         if (p > 1) continue;
-        ctx.globalAlpha = p > 0.8 ? (1 - p) / 0.2 : 1;
-        const q = project(0, BEAM_Y, Z_GUN + 0.35 + (Z_BAR - Z_GUN - 0.5) * p);
+        const z = Z_GUN + 0.35 + (Z_BAR - Z_GUN - 0.4) * p;
+        const q = project(0, BEAM_Y, z);
+        const halfW = (0.12 + (SLIT_X + 0.35) * p * p) * q.s;   // grows to cover both slits
+        const halfH = 0.16 * q.s;
+        const a = p > 0.85 ? (1 - p) / 0.15 : 1;
+        ctx.globalAlpha = a;
+        ctx.translate(q.x, q.y);
+        ctx.scale(halfW / halfH, 1);
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, halfH);
+        g.addColorStop(0, 'rgba(160, 255, 200, 0.95)');
+        g.addColorStop(0.45, 'rgba(127, 255, 176, 0.55)');
+        g.addColorStop(1, 'rgba(127, 255, 176, 0)');
+        ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(q.x, q.y, Math.max(3, 0.12 * q.s), 0, Math.PI * 2);
+        ctx.arc(0, 0, halfH, 0, Math.PI * 2);
         ctx.fill();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      ctx.restore();
+    }
+
+    // Behind the barrier: circular ripples spreading from both slits toward the screen
+    function drawRipples(now) {
+      ctx.save();
+      ctx.lineWidth = 2.5;
+      for (const f of flights) {
+        const p = ((now - f.born) / f.dur - SPLIT) / (1 - SPLIT);
+        if (p < 0 || p > 1) continue;
+        const r = 0.15 + p * (Z_SCR - Z_BAR);
+        const a = 0.6 * (1 - p * 0.7);
+        ctx.strokeStyle = 'rgba(127, 255, 176,' + a.toFixed(3) + ')';
+        [-SLIT_X, SLIT_X].forEach(function (cx) {
+          ctx.beginPath();
+          for (let k = 0; k <= 40; k++) {
+            const ang = (k / 40 - 0.5) * RIPPLE_SPAN;
+            const x = cx + r * Math.sin(ang);
+            const z = Z_BAR + BAR_T + r * Math.cos(ang);
+            if (z > Z_SCR || Math.abs(x) > SCR_W / 2) continue;
+            const q = project(x, BEAM_Y, z);
+            if (k === 0) ctx.moveTo(q.x, q.y);
+            else ctx.lineTo(q.x, q.y);
+          }
+          ctx.stroke();
+        });
       }
       ctx.restore();
     }
@@ -262,8 +301,9 @@
       drawScreen();
       drawRecent(now);
       if (step >= 4) drawCurve(now);
+      drawRipples(now);
       drawBarrier();
-      drawFlights(now);
+      drawPackets(now);
       drawGun();
       drawLabels();
     }
@@ -295,7 +335,7 @@
 
     function spawn(now) {
       if (count + flights.length >= MAX_HITS) return false;
-      if (step <= 2) flights.push({ born: now, dur: step === 1 ? 800 : 360 });
+      if (step <= 2) flights.push({ born: now, dur: step === 1 ? 1300 : 600 });
       else addHit(now, false);
       return true;
     }
