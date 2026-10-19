@@ -2,7 +2,8 @@
    'bullets'    : classical balls from a machine gun, two bands behind the slits
    'electrons'  : path unknown, interference fringes build up
    'which-path' : detectors at the slits record the path, two bands
-   'twins'      : each photon becomes a twin pair at the slit; the twin reveals the path, a plain spot */
+   'twins'      : each photon becomes a twin pair at the slit; the twin reveals the path, two bands
+   'delayed'    : same twins, but the twin flies much longer and is detected after its partner hits the screen */
 (function () {
   'use strict';
 
@@ -35,8 +36,6 @@
   const ENV = 4;                   // single-slit envelope first zero, in fringe periods
   const SEP_PX = 115;              // which-path: band centers
   const SINGLE_PX = 165;           // which-path: band half width (first zero)
-  const TWIN_SEP = 45;             // twins: the two humps nearly merge into one spot
-  const TWIN_W = 270;
 
   // Machine gun: straight lines from the barrel end through a slit to the screen
   const Z_MUZZLE = Z_GUN + 0.9;
@@ -45,10 +44,14 @@
   const BULLET_Y0 = BEAM_Y + (0.35 - BEAM_Y) / K_PROJ;          // keep hits on the screen
   const BULLET_Y1 = Math.min(SLIT_Y1, BEAM_Y + (SCR_H - 0.35 - BEAM_Y) / K_PROJ);
 
-  // Twin detectors (left of the barrier, on the source side)
-  const TWIN_DET = {
+  // Twin detectors (left of the barrier, on the source side); the delayed scene moves them far away
+  const TWIN_DET_NEAR = {
     '-1': { x: -5.0, z: Z_BAR - 0.9 },
     '1': { x: -6.4, z: Z_BAR - 3.2 }
+  };
+  const TWIN_DET_FAR = {
+    '-1': { x: -7.8, z: Z_BAR - 0.5 },
+    '1': { x: -7.2, z: Z_BAR - 2.9 }
   };
 
   const SPLIT = 0.45;                    // fraction of a quantum flight spent before the barrier
@@ -85,9 +88,6 @@
   function bandWP(dx, slit) {
     return sinc2(Math.PI * (dx - slit * SEP_PX) / SINGLE_PX);
   }
-  function bandTwin(dx, slit) {
-    return sinc2(Math.PI * (dx - slit * TWIN_SEP) / TWIN_W);
-  }
   const BULLET_C = SLIT_X * K_PROJ * PX_PER_UNIT;
   const BULLET_S = Math.sqrt(Math.pow(SLIT_W * K_PROJ, 2) / 12 + SPREAD * SPREAD) * PX_PER_UNIT;
   function bandBullet(dx, slit) {
@@ -103,7 +103,6 @@
   const CURVES = {
     fringes: fringes,
     twoBands: normalized(function (d) { return bandWP(d, -1) + bandWP(d, 1); }),
-    spot: normalized(function (d) { return bandTwin(d, -1) + bandTwin(d, 1); }),
     bullets: normalized(function (d) { return bandBullet(d, -1) + bandBullet(d, 1); })
   };
 
@@ -126,11 +125,9 @@
       return { tx: TW / 2 + rejection(fringes), ty: randomTy(), slit: 0 };
     }
     const slit = Math.random() < 0.5 ? -1 : 1;
-    if (kind === 'which-path') {
+    // Path known (detectors or twins): a band behind the slit it went through
+    if (kind === 'which-path' || kind === 'twins' || kind === 'delayed') {
       return { tx: TW / 2 + rejection(function (d) { return bandWP(d, slit); }), ty: randomTy(), slit: slit };
-    }
-    if (kind === 'twins') {
-      return { tx: TW / 2 + rejection(function (d) { return bandTwin(d, slit); }), ty: randomTy(), slit: slit };
     }
     // bullets: straight line through a random point of the slit opening
     for (;;) {
@@ -160,6 +157,7 @@
     'which-path': { dot: 'rgba(205, 255, 228, 0.9)', glow: '#7fffb0', noun: 'электронов', slitHead: 'щель' },
     twins: { dot: 'rgba(255, 228, 160, 0.9)', glow: '#ffd166', noun: 'фотонов', slitHead: 'близнец' }
   };
+  LOOK.delayed = LOOK.twins;
   const TWIN_COLOR = '#ff7ab6';
 
   // opts: { kind, captions, rates, curveStep, maxHits, lampsOffStep }
@@ -169,6 +167,9 @@
       const kind = opts.kind;
       const look = LOOK[kind];
       const quantum = kind !== 'bullets';
+      const twins = kind === 'twins' || kind === 'delayed';
+      const TWIN_DET = kind === 'delayed' ? TWIN_DET_FAR : TWIN_DET_NEAR;
+      const TWIN_DELAY = opts.twinDelay || 1;   // twin flight time relative to its partner's
 
       const tex = document.createElement('canvas');
       tex.width = TW;
@@ -181,6 +182,7 @@
       let curveT0 = 0;
       let t0 = 0;                 // clock start for the log
       let flights = [];
+      let pending = [];           // fast mode: twins still on their way {hit, at}
       let recent = [];            // fresh hits shown with a flash
       let log = [];               // newest first
       const lampT = { '-1': -1e9, '1': -1e9 };    // last time each detector fired
@@ -325,7 +327,7 @@
           box(-0.32, 0.32, BEAM_Y - 0.3, BEAM_Y + 0.3, Z_GUN - 1.7, Z_GUN, c);
           return;
         }
-        const c = kind === 'twins' ? GUN_COLS.photon : GUN_COLS.electron;
+        const c = twins ? GUN_COLS.photon : GUN_COLS.electron;
         box(-0.15, 0.15, BEAM_Y - 0.15, BEAM_Y + 0.15, Z_GUN, Z_GUN + 0.35, c);
         box(-0.15, 0.15, 0, BEAM_Y - 0.35, Z_GUN - 0.9, Z_GUN - 0.5, c);
         box(-0.4, 0.4, BEAM_Y - 0.35, BEAM_Y + 0.35, Z_GUN - 1.6, Z_GUN, c);
@@ -433,7 +435,7 @@
       // Twin photon flying from its crystal to its detector
       function drawTwinPhotons(now) {
         for (const f of flights) {
-          const p = ((now - f.born) / f.dur - SPLIT) / (1 - SPLIT);
+          const p = ((now - f.born) / f.dur - SPLIT) / ((1 - SPLIT) * TWIN_DELAY);
           if (p < 0 || p > 1) continue;
           const d = TWIN_DET[f.hit.slit];
           const x0 = f.hit.slit * SLIT_X, z0 = Z_BAR - 0.17;
@@ -518,7 +520,7 @@
 
       function slitText(row) {
         if (kind === 'electrons') return '?';
-        if (kind === 'twins' && !row.hit.twinSeen) return '…';
+        if (twins && !row.hit.twinSeen) return '…';
         return row.hit.slit < 0 ? 'Л' : 'П';
       }
 
@@ -543,8 +545,8 @@
         ctx.fillText(look.noun + ': ' + count, LOG_X + LOG_W - 14, LOG_Y + 26);
         ctx.textAlign = 'left';
         if (kind !== 'electrons') {
-          ctx.fillStyle = kind === 'twins' ? '#ffb3d6' : '#ffb3b3';
-          const who = kind === 'twins' ? 'близнецы' : (kind === 'bullets' ? 'через щель' : 'датчики');
+          ctx.fillStyle = twins ? '#ffb3d6' : '#ffb3b3';
+          const who = twins ? 'близнецы' : (kind === 'bullets' ? 'через щель' : 'датчики');
           ctx.fillText(who + ':  Л ' + tally['-1'] + '   П ' + tally['1'], LOG_X + 14, LOG_Y + 56);
         } else {
           ctx.fillStyle = '#8a96ab';
@@ -574,7 +576,7 @@
           const vals = [String(r.n), r.tL.toFixed(3), r.tH.toFixed(3), r.x.toFixed(1), r.y.toFixed(1)];
           vals.forEach(function (v, k) { ctx.fillText(v, LOG_X + COLS[k].x, y); });
           const st = slitText(r);
-          ctx.fillStyle = st === '?' ? '#ffd54a' : (st === '…' ? '#8a96ab' : (kind === 'twins' ? '#ffb3d6' : '#ffb3b3'));
+          ctx.fillStyle = st === '?' ? '#ffd54a' : (st === '…' ? '#8a96ab' : (twins ? '#ffb3d6' : '#ffb3b3'));
           ctx.fillText(st, LOG_X + COLS[5].x + 28, y);
         }
         ctx.restore();
@@ -592,7 +594,7 @@
         else drawBullets(now, true);
         drawBarrier();
         if (kind === 'which-path') drawWhichPathDetectors(now);
-        if (kind === 'twins') {
+        if (twins) {
           drawCrystals(now);
           drawTwinPhotons(now);
           drawTwinDetectors(now);
@@ -610,6 +612,7 @@
         count = 0;
         acc = 0;
         flights = [];
+        pending = [];
         recent = [];
         log = [];
         tally['-1'] = tally['1'] = 0;
@@ -645,20 +648,27 @@
       }
 
       // Instant hit without a visible flight (fast mode and prefill)
-      function instantHit(now, flash) {
+      function instantHit(now, flash, noDelay) {
         const hit = sampleHit(kind);
-        reveal(hit, now);
         if (hit.slit) crystalT[hit.slit] = now;
+        if (TWIN_DELAY > 1 && !noDelay) pending.push({ hit: hit, at: now + 300 + Math.random() * 700 });
+        else reveal(hit, now);
         addHit(now, hit, flash);
       }
 
       function prefill(total) {
         const now = performance.now();
-        while (count < total) instantHit(now, false);
+        while (count < total) instantHit(now, false, true);
+      }
+
+      function inFlight() {
+        let n = 0;
+        for (const f of flights) if (!f.landed) n++;
+        return n;
       }
 
       function spawn(now) {
-        if (count + flights.length >= opts.maxHits) return false;
+        if (count + inFlight() >= opts.maxHits) return false;
         const r = rate();
         if (!quantum) {
           flights.push({ born: now, dur: r < 5 ? 900 : 500, hit: sampleHit(kind), passed: false });
@@ -691,17 +701,25 @@
           if (!f.passed && now - f.born >= f.dur * (quantum ? SPLIT : 0.25)) {
             f.passed = true;
             if (kind === 'which-path' || kind === 'bullets') reveal(f.hit, now);
-            if (kind === 'twins') crystalT[f.hit.slit] = now;
+            if (twins) crystalT[f.hit.slit] = now;
           }
-          if (now - f.born >= f.dur) {
-            if (kind === 'twins') reveal(f.hit, now);   // twin reaches its detector
+          // The partner reaches the screen
+          if (!f.landed && now - f.born >= f.dur) {
+            f.landed = true;
             addHit(now, f.hit, rate() < 5, f.born);
             if (!busy) Sfx.click(quantum ? 0.7 : 0.3);
-          } else {
-            still.push(f);
           }
+          // The twin reaches its detector (later than the screen hit when delayed)
+          const twinDone = !twins || now - f.born >= f.dur * (SPLIT + (1 - SPLIT) * TWIN_DELAY);
+          if (twins && twinDone) reveal(f.hit, now);
+          if (!(f.landed && twinDone)) still.push(f);
         }
         flights = still;
+        pending = pending.filter(function (p) {
+          if (now < p.at) return true;
+          reveal(p.hit, now);
+          return false;
+        });
         recent = recent.filter(function (r) { return now - r.born < 700; });
       }
 
@@ -775,17 +793,33 @@
     maxHits: 6000
   }));
 
+  Scenes.register('delayed', build({
+    kind: 'delayed',
+    captions: [
+      'Отложенный выбор: детекторы близнецов унесли далеко',
+      'Фотон уже на экране, а его близнец ещё летит',
+      'Щель становится известна позже удара…',
+      '…но на экране всё равно две полосы'
+    ],
+    rates: [0, 0.6, 700, 700],
+    curveStep: 3,
+    curve: 'twoBands',
+    ghost: true,
+    twinDelay: 3.2,
+    maxHits: 6000
+  }));
+
   Scenes.register('twins', build({
     kind: 'twins',
     captions: [
       'У щелей кристаллы: фотон превращается в пару близнецов',
       'Один близнец летит на экран, второй — в детектор Л или П',
       'По второму близнецу всегда можно узнать щель…',
-      '…и на экране пятно: полос нет'
+      '…и на экране две полосы: интерференции нет'
     ],
     rates: [0, 0.9, 700, 700],
     curveStep: 3,
-    curve: 'spot',
+    curve: 'twoBands',
     ghost: true,
     maxHits: 6000
   }));
