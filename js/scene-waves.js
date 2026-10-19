@@ -161,9 +161,6 @@
       // Screen
       ctx.fillStyle = '#2a3040';
       ctx.fillRect(SX, 0, SW, H);
-      drawLabel(ctx, 'волна', 70, 40, 'left');
-      drawLabel(ctx, 'две щели', BX, 40);
-      drawLabel(ctx, 'экран', SX + SW / 2, 40);
     }
 
     function draw() {

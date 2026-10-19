@@ -2,9 +2,9 @@
 (function () {
   'use strict';
 
-  // Speaker zone from URL: ?zone=22&side=right (zone in % of screen width, 0 disables)
+  // Optional speaker zone from URL: ?zone=22&side=right (% of screen width); full screen by default
   const params = new URLSearchParams(location.search);
-  const zone = Math.max(0, Math.min(45, parseFloat(params.get('zone') || '22')));
+  const zone = Math.max(0, Math.min(45, parseFloat(params.get('zone') || '0')));
   document.documentElement.style.setProperty('--zone', zone + 'vw');
   if (params.get('side') === 'left') document.body.classList.add('zone-left');
 

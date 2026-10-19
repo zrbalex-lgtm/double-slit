@@ -1,6 +1,6 @@
-/* Width of the black speaker zone; overridden from JS (?zw=) */
+/* Width of the optional black speaker zone; set from JS (?zone=) */
 :root {
-  --zone: 22vw;
+  --zone: 0vw;
   --r-background-color: #000;
 }
 
