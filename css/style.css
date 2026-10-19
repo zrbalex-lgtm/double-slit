@@ -1,0 +1,95 @@
+/* Width of the black speaker zone; overridden from JS (?zw=) */
+:root {
+  --zone: 22vw;
+  --r-background-color: #000;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+}
+
+/* Presentation area: everything except the speaker zone */
+#stage {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc(100vw - var(--zone));
+}
+body.zone-left #stage {
+  left: var(--zone);
+}
+
+#stage .reveal {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.reveal .slides > section {
+  height: 100%;
+  padding: 0;
+}
+
+section[data-scene] canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Invisible fragments used only as click steps */
+.reveal .fragment.step {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.caption {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  max-width: 1400px;
+  padding: 10px 26px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #e8eef8;
+  font-size: 34px;
+  line-height: 1.3;
+  text-align: center;
+  transition: opacity 0.35s;
+}
+.caption:empty {
+  opacity: 0;
+}
+
+/* Placeholder slides */
+.ph {
+  padding: 110px 120px;
+  text-align: left;
+}
+.ph .num {
+  color: #4fc3f7;
+  font-size: 40px;
+  font-weight: 700;
+}
+.reveal .ph h2 {
+  color: #f2f5fa;
+  font-size: 64px;
+  text-transform: none;
+  line-height: 1.2;
+}
+.ph p {
+  color: #a9b4c8;
+  font-size: 36px;
+}
+.ph .todo {
+  color: #5d6678;
+  font-size: 26px;
+  font-style: italic;
+}

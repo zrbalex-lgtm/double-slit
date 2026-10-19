@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Двухщелевой опыт</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="stage">
+  <div class="reveal">
+    <div class="slides">
+
+      <!-- 1 -->
+      <section>
+        <div class="ph">
+          <div class="num">1</div>
+          <h2>Лазер и две щели</h2>
+          <p>Что будет на стене?</p>
+          <p class="todo">заглушка: сюда фото живых полос</p>
+        </div>
+        <aside class="notes">Опрос: что увидим? Обычно отвечают «две полосы». Включаем — много полос.</aside>
+      </section>
+
+      <!-- 2 -->
+      <section>
+        <div class="ph">
+          <div class="num">2</div>
+          <h2>Гребень + гребень = светло<br>Гребень + впадина = темно</h2>
+          <p class="todo">заглушка</p>
+        </div>
+      </section>
+
+      <!-- 3: waves from two slits -->
+      <section data-scene="waves">
+        <canvas width="1600" height="900"></canvas>
+        <div class="caption"></div>
+        <span class="fragment step"></span><span class="fragment step"></span>
+        <span class="fragment step"></span><span class="fragment step"></span>
+        <span class="fragment step"></span><span class="fragment step"></span>
+        <aside class="notes">Клик 1 — запуск волны. 2 — гребни и впадины (замедление). 3 — точки усиления. 4 — точки гашения. 5 — лучи. 6 — картина на экране.</aside>
+      </section>
+
+      <!-- 4 -->
+      <section>
+        <div class="ph">
+          <div class="num">4</div>
+          <h2>Электроны</h2>
+          <p>Ждём две полосы…</p>
+          <p class="todo">заглушка</p>
+        </div>
+      </section>
+
+      <!-- 5: electrons one by one -->
+      <section data-scene="electrons">
+        <canvas width="1600" height="900"></canvas>
+        <div class="caption"></div>
+        <span class="fragment step"></span><span class="fragment step"></span>
+        <span class="fragment step"></span><span class="fragment step"></span>
+        <aside class="notes">Клик 1 — по одному со щелчком. 2 — быстрее. 3 — тысячи, проступают полосы. 4 — кривая интерференции.</aside>
+      </section>
+
+      <!-- 6 -->
+      <section><div class="ph"><div class="num">6</div><h2>Датчик у щелей</h2>
+        <p>Информация о пути → две полосы</p><p class="todo">заглушка</p></div></section>
+
+      <!-- 7 -->
+      <section><div class="ph"><div class="num">7</div><h2>Фотоны-близнецы</h2>
+        <p>Близнец несёт информацию о пути</p><p class="todo">заглушка</p></div></section>
+
+      <!-- 8 -->
+      <section><div class="ph"><div class="num">8</div><h2>Отложенный выбор</h2>
+        <p class="todo">заглушка</p></div></section>
+
+      <!-- 9 -->
+      <section><div class="ph"><div class="num">9</div><h2>Квантовый ластик</h2>
+        <p>Общий экран — всегда пятно. Полосы — только после сортировки по близнецу.</p>
+        <p class="todo">заглушка</p></div></section>
+
+      <!-- 10 -->
+      <section><div class="ph"><div class="num">10</div><h2>Честный момент</h2>
+        <p>Сигнал в прошлое послать нельзя</p><p class="todo">заглушка</p></div></section>
+
+      <!-- 11 -->
+      <section><div class="ph"><div class="num">11</div><h2>Пока нет следа о пути — частица ведёт себя как волна</h2>
+        <p class="todo">заглушка: цитата Фейнмана + фото живых полос</p></div></section>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/registry.js"></script>
+<script src="js/scene-waves.js"></script>
+<script src="js/scene-electrons.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
