@@ -3,7 +3,9 @@
    'electrons'  : path unknown, interference fringes build up
    'which-path' : detectors at the slits record the path, two bands
    'twins'      : each photon becomes a twin pair at the slit; the twin reveals the path, two bands
-   'delayed'    : same twins, but the twin flies much longer and is detected after its partner hits the screen */
+   'delayed'    : same twins, but the twin flies much longer and is detected after its partner hits the screen
+   'eraser'     : 50/50 mirrors send the twin to 'path known' (L, R) or 'path erased' (1, 2) detectors;
+                  the screen shows two bands until hits are sorted by the twin's detector */
 (function () {
   'use strict';
 
@@ -53,6 +55,23 @@
     '-1': { x: -7.8, z: Z_BAR - 0.5 },
     '1': { x: -7.2, z: Z_BAR - 2.9 }
   };
+
+  // Eraser: each twin hits a 50/50 mirror; reflected -> its own 'path known' detector,
+  // transmitted -> a joining mirror that mixes both paths into detectors 1 and 2
+  const ER_BS = { '-1': { x: -4.4, z: 5.4 }, '1': { x: -4.4, z: 3.5 } };
+  const ER_JOIN = { x: -6.2, z: 4.45 };
+  const ER_DET = {
+    L: { x: -5.4, z: 6.4 },
+    R: { x: -5.4, z: 2.5 },
+    D1: { x: -7.6, z: 5.2 },
+    D2: { x: -7.6, z: 3.7 }
+  };
+  const ER_COLOR = { L: '#c9d1de', R: '#c9d1de', D1: '#5aa9ff', D2: '#ff6b6b' };
+  const ER_DOT = {
+    L: 'rgba(175, 182, 195, 0.85)', R: 'rgba(175, 182, 195, 0.85)',
+    D1: 'rgba(110, 175, 255, 0.95)', D2: 'rgba(255, 110, 110, 0.95)'
+  };
+  const ER_LABEL = { L: 'Л', R: 'П', D1: '1', D2: '2' };
 
   const SPLIT = 0.45;                    // fraction of a quantum flight spent before the barrier
   const RIPPLE_SPAN = Math.PI * 0.55;    // angular width of ripples behind each slit
@@ -125,6 +144,19 @@
       return { tx: TW / 2 + rejection(fringes), ty: randomTy(), slit: 0 };
     }
     const slit = Math.random() < 0.5 ? -1 : 1;
+    if (kind === 'eraser') {
+      // Half the twins keep the path (L/R): a band behind that slit
+      if (Math.random() < 0.5) {
+        return {
+          tx: TW / 2 + rejection(function (d) { return bandWP(d, slit); }),
+          ty: randomTy(), slit: slit, group: slit < 0 ? 'L' : 'R'
+        };
+      }
+      // Path erased: same two-band envelope overall, split into fringes (1) and shifted fringes (2)
+      const dx = rejection(CURVES.twoBands);
+      const c = Math.cos(Math.PI * dx / PERIOD);
+      return { tx: TW / 2 + dx, ty: randomTy(), slit: slit, group: Math.random() < c * c ? 'D1' : 'D2' };
+    }
     // Path known (detectors or twins): a band behind the slit it went through
     if (kind === 'which-path' || kind === 'twins' || kind === 'delayed') {
       return { tx: TW / 2 + rejection(function (d) { return bandWP(d, slit); }), ty: randomTy(), slit: slit };
@@ -158,6 +190,7 @@
     twins: { dot: 'rgba(255, 228, 160, 0.9)', glow: '#ffd166', noun: 'фотонов', slitHead: 'близнец' }
   };
   LOOK.delayed = LOOK.twins;
+  LOOK.eraser = Object.assign({}, LOOK.twins, { slitHead: 'детектор' });
   const TWIN_COLOR = '#ff7ab6';
 
   // opts: { kind, captions, rates, curveStep, maxHits, lampsOffStep }
@@ -167,7 +200,8 @@
       const kind = opts.kind;
       const look = LOOK[kind];
       const quantum = kind !== 'bullets';
-      const twins = kind === 'twins' || kind === 'delayed';
+      const eraser = kind === 'eraser';
+      const twins = kind === 'twins' || kind === 'delayed' || eraser;
       const TWIN_DET = kind === 'delayed' ? TWIN_DET_FAR : TWIN_DET_NEAR;
       const TWIN_DELAY = opts.twinDelay || 1;   // twin flight time relative to its partner's
 
@@ -188,6 +222,8 @@
       const lampT = { '-1': -1e9, '1': -1e9 };    // last time each detector fired
       const crystalT = { '-1': -1e9, '1': -1e9 }; // last time each crystal split a photon
       const tally = { '-1': 0, '1': 0 };
+      const erTally = { L: 0, R: 0, D1: 0, D2: 0 };
+      let hits = [];              // every hit, so the screen can be recolored by the twin's detector
 
       function rate() {
         return opts.rates[Math.min(step, opts.rates.length - 1)];
@@ -236,8 +272,8 @@
         ctx.restore();
       }
 
-      // Lamp on top of a detector box; flashes red for a moment after firing
-      function lamp(x, y, z, firedAt, now, on) {
+      // Lamp on top of a detector box; flashes (red by default) for a moment after firing
+      function lamp(x, y, z, firedAt, now, on, color) {
         const q = project(x, y, z);
         const r = 0.13 * q.s;
         const a = on ? Math.max(0, 1 - (now - firedAt) / 350) : 0;
@@ -248,8 +284,8 @@
         ctx.fill();
         if (a > 0) {
           ctx.globalAlpha = a;
-          ctx.fillStyle = '#ff5a5a';
-          ctx.shadowColor = '#ff3b3b';
+          ctx.fillStyle = color || '#ff5a5a';
+          ctx.shadowColor = color || '#ff3b3b';
           ctx.shadowBlur = 30;
           ctx.beginPath();
           ctx.ellipse(q.x, q.y, r * 1.2, r * 0.7, 0, 0, Math.PI * 2);
@@ -432,11 +468,39 @@
         ctx.restore();
       }
 
+      // Eraser twin route: crystal -> 50/50 mirror -> own detector, or -> joining mirror -> detector 1/2
+      function erRoute(hit) {
+        const pts = [{ x: hit.slit * SLIT_X, z: Z_BAR - 0.17 }, ER_BS[hit.slit]];
+        if (hit.group === 'D1' || hit.group === 'D2') pts.push(ER_JOIN);
+        pts.push(ER_DET[hit.group]);
+        return pts;
+      }
+
+      function alongRoute(pts, p) {
+        let total = 0;
+        for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+        let d = p * total;
+        for (let i = 1; i < pts.length; i++) {
+          const seg = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+          if (d <= seg) {
+            const k = d / seg;
+            return { x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * k, z: pts[i - 1].z + (pts[i].z - pts[i - 1].z) * k };
+          }
+          d -= seg;
+        }
+        return pts[pts.length - 1];
+      }
+
       // Twin photon flying from its crystal to its detector
       function drawTwinPhotons(now) {
         for (const f of flights) {
           const p = ((now - f.born) / f.dur - SPLIT) / ((1 - SPLIT) * TWIN_DELAY);
           if (p < 0 || p > 1) continue;
+          if (eraser) {
+            const q = alongRoute(erRoute(f.hit), p);
+            glowDot(q.x, BEAM_Y, q.z, 0.08, TWIN_COLOR);
+            continue;
+          }
           const d = TWIN_DET[f.hit.slit];
           const x0 = f.hit.slit * SLIT_X, z0 = Z_BAR - 0.17;
           glowDot(x0 + (d.x + 0.25 - x0) * p, BEAM_Y, z0 + (d.z - z0) * p, 0.08, TWIN_COLOR);
@@ -469,6 +533,115 @@
           ctx.arc(q.x, q.y, (0.08 + (1 - a) * 0.3) * q.s, 0, Math.PI * 2);
           ctx.stroke();
         }
+        ctx.restore();
+      }
+
+      function dashedRoute(pts, color) {
+        ctx.save();
+        ctx.setLineDash([8, 8]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        pts.forEach(function (pt, i) {
+          const q = project(pt.x, BEAM_Y, pt.z);
+          if (i === 0) ctx.moveTo(q.x, q.y);
+          else ctx.lineTo(q.x, q.y);
+        });
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Half-silvered mirror: a thin glass slab standing at 45 degrees
+      function drawMirror(m) {
+        const a = 0.3, y0 = BEAM_Y - 0.4, y1 = BEAM_Y + 0.4;
+        poly([[m.x - a, y0, m.z - a], [m.x + a, y0, m.z + a], [m.x + a, y1, m.z + a], [m.x - a, y1, m.z - a]],
+          'rgba(170, 220, 255, 0.35)', 'rgba(200, 235, 255, 0.85)');
+      }
+
+      function drawEraserDetector(g, now) {
+        const d = ER_DET[g];
+        box(d.x - 0.08, d.x + 0.08, 0, BEAM_Y - 0.3, d.z - 0.08, d.z + 0.08, DET_COL);
+        box(d.x - 0.3, d.x + 0.3, BEAM_Y - 0.3, BEAM_Y + 0.3, d.z - 0.3, d.z + 0.3, DET_COL);
+        lamp(d.x, BEAM_Y + 0.3, d.z, lampT[g] || -1e9, now, true, ER_COLOR[g]);
+        const q = project(d.x, BEAM_Y + 0.85, d.z);
+        drawLabel(ctx, ER_LABEL[g], q.x, q.y, 'center', ER_COLOR[g]);
+      }
+
+      function drawEraserOptics(now) {
+        const guide = 'rgba(255, 122, 182, 0.35)';
+        [-1, 1].forEach(function (side) {
+          const c = { x: side * SLIT_X, z: Z_BAR - 0.17 };
+          dashedRoute([c, ER_BS[side], ER_DET[side < 0 ? 'L' : 'R']], guide);
+          dashedRoute([ER_BS[side], ER_JOIN], guide);
+        });
+        dashedRoute([ER_JOIN, ER_DET.D1], guide);
+        dashedRoute([ER_JOIN, ER_DET.D2], guide);
+        // Mirrors and detectors from far to near
+        const items = [
+          { z: ER_BS['-1'].z, draw: function () { drawMirror(ER_BS['-1']); } },
+          { z: ER_BS['1'].z, draw: function () { drawMirror(ER_BS['1']); } },
+          { z: ER_JOIN.z, draw: function () { drawMirror(ER_JOIN); } }
+        ];
+        Object.keys(ER_DET).forEach(function (g) {
+          items.push({ z: ER_DET[g].z, draw: function () { drawEraserDetector(g, now); } });
+        });
+        items.sort(function (a, b) { return b.z - a.z; });
+        items.forEach(function (it) { it.draw(); });
+      }
+
+      // Which hits are shown on the screen, and in what color, at the current step
+      function dotStyle(hit) {
+        if (!eraser || step < 3) return look.dot;
+        const g = hit.group;
+        const known = g === 'L' || g === 'R';
+        if (step === 3) return ER_DOT[g];
+        if (step === 4) return known ? ER_DOT[g] : null;
+        if (step === 5) return g === 'D1' ? ER_DOT[g] : null;
+        if (step === 6) return g === 'D2' ? ER_DOT[g] : null;
+        return known ? null : ER_DOT[g];
+      }
+
+      function drawDot(hit) {
+        const c = dotStyle(hit);
+        if (!c) return;
+        tctx.fillStyle = c;
+        tctx.beginPath();
+        tctx.arc(hit.tx, hit.ty, 2.4, 0, Math.PI * 2);
+        tctx.fill();
+      }
+
+      function redrawTexture() {
+        tctx.clearRect(0, 0, TW, TH);
+        hits.forEach(drawDot);
+      }
+
+      // Eraser curves: envelope for known paths, fringes and shifted fringes for erased ones
+      const blueFringe = function (dx) {
+        const c = Math.cos(Math.PI * dx / PERIOD);
+        return CURVES.twoBands(dx) * c * c;
+      };
+      const redFringe = function (dx) {
+        const c = Math.sin(Math.PI * dx / PERIOD);
+        return CURVES.twoBands(dx) * c * c;
+      };
+
+      function strokeCurve(fn, p, color, width) {
+        curvePath(fn, p);
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.lineWidth = width + 4;
+        ctx.stroke();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.stroke();
+      }
+
+      function drawEraserCurves(now) {
+        const p = Math.min(1, (now - curveT0) / 1500);
+        ctx.save();
+        if (step === 4) strokeCurve(CURVES.twoBands, p, ER_COLOR.L, 4);
+        if (step === 5 || step >= 7) strokeCurve(blueFringe, p, ER_COLOR.D1, 4);
+        if (step === 6 || step >= 7) strokeCurve(redFringe, p, ER_COLOR.D2, 4);
+        if (step >= 7) strokeCurve(CURVES.twoBands, p, 'rgba(255, 213, 74, 0.95)', 4);
         ctx.restore();
       }
 
@@ -520,6 +693,7 @@
 
       function slitText(row) {
         if (kind === 'electrons') return '?';
+        if (eraser) return row.hit.twinSeen ? ER_LABEL[row.hit.group] : '…';
         if (twins && !row.hit.twinSeen) return '…';
         return row.hit.slit < 0 ? 'Л' : 'П';
       }
@@ -544,7 +718,11 @@
         ctx.fillStyle = '#cfe9da';
         ctx.fillText(look.noun + ': ' + count, LOG_X + LOG_W - 14, LOG_Y + 26);
         ctx.textAlign = 'left';
-        if (kind !== 'electrons') {
+        if (eraser) {
+          ctx.fillStyle = '#ffb3d6';
+          ctx.fillText('близнецы:  Л ' + erTally.L + '  П ' + erTally.R + '   1: ' + erTally.D1 + '  2: ' + erTally.D2,
+            LOG_X + 14, LOG_Y + 56);
+        } else if (kind !== 'electrons') {
           ctx.fillStyle = twins ? '#ffb3d6' : '#ffb3b3';
           const who = twins ? 'близнецы' : (kind === 'bullets' ? 'через щель' : 'датчики');
           ctx.fillText(who + ':  Л ' + tally['-1'] + '   П ' + tally['1'], LOG_X + 14, LOG_Y + 56);
@@ -576,7 +754,8 @@
           const vals = [String(r.n), r.tL.toFixed(3), r.tH.toFixed(3), r.x.toFixed(1), r.y.toFixed(1)];
           vals.forEach(function (v, k) { ctx.fillText(v, LOG_X + COLS[k].x, y); });
           const st = slitText(r);
-          ctx.fillStyle = st === '?' ? '#ffd54a' : (st === '…' ? '#8a96ab' : (twins ? '#ffb3d6' : '#ffb3b3'));
+          ctx.fillStyle = st === '?' ? '#ffd54a' : (st === '…' ? '#8a96ab' :
+            (eraser ? ER_COLOR[r.hit.group] : (twins ? '#ffb3d6' : '#ffb3b3')));
           ctx.fillText(st, LOG_X + COLS[5].x + 28, y);
         }
         ctx.restore();
@@ -589,7 +768,11 @@
         drawFloor();
         drawScreen();
         drawRecent(now);
-        if (step >= opts.curveStep) drawCurve(now);
+        if (eraser) {
+          if (step >= 4) drawEraserCurves(now);
+        } else if (step >= opts.curveStep) {
+          drawCurve(now);
+        }
         if (quantum) drawRipples(now);
         else drawBullets(now, true);
         drawBarrier();
@@ -597,7 +780,8 @@
         if (twins) {
           drawCrystals(now);
           drawTwinPhotons(now);
-          drawTwinDetectors(now);
+          if (eraser) drawEraserOptics(now);
+          else drawTwinDetectors(now);
         }
         if (quantum) drawPackets(now);
         else drawBullets(now, false);
@@ -615,12 +799,22 @@
         pending = [];
         recent = [];
         log = [];
+        hits = [];
         tally['-1'] = tally['1'] = 0;
+        erTally.L = erTally.R = erTally.D1 = erTally.D2 = 0;
       }
 
       // Path information becomes known (detector, twin, or the bullet's own slit)
       function reveal(hit, now) {
-        if (!hit.slit || hit.revealed) return;
+        if (hit.revealed) return;
+        if (hit.group) {
+          hit.revealed = true;
+          hit.twinSeen = true;
+          erTally[hit.group]++;
+          lampT[hit.group] = now;
+          return;
+        }
+        if (!hit.slit) return;
         hit.revealed = true;
         hit.twinSeen = true;
         tally[hit.slit]++;
@@ -628,10 +822,8 @@
       }
 
       function addHit(now, hit, flash, launchedAt) {
-        tctx.fillStyle = look.dot;
-        tctx.beginPath();
-        tctx.arc(hit.tx, hit.ty, 2.4, 0, Math.PI * 2);
-        tctx.fill();
+        hits.push(hit);
+        drawDot(hit);
         count++;
         if (flash) recent.push({ tx: hit.tx, ty: hit.ty, born: now });
         const tH = (now - t0) / 1000;
@@ -734,9 +926,12 @@
         if (s === 0) clearAll();
         if (step === 0 && s > 0) t0 = now;
         // Entering mid-sequence (e.g. navigating back): show an accumulated pattern
-        if (step === 0 && s > 0 && opts.rates[Math.min(s, opts.rates.length - 1)] >= 20) prefill(opts.maxHits);
+        const fast = opts.rates[Math.min(s, opts.rates.length - 1)] >= 20 || (opts.prefillFrom && s >= opts.prefillFrom);
+        if (step === 0 && s > 0 && fast) prefill(opts.maxHits);
         if (s >= opts.curveStep && step < opts.curveStep) curveT0 = now;
+        if (eraser && s >= 4) curveT0 = now;
         step = s;
+        if (eraser) redrawTexture();
         captionEl.textContent = opts.captions[Math.min(s, opts.captions.length - 1)];
       }
 
@@ -790,6 +985,25 @@
     curve: 'twoBands',
     ghost: true,
     lampsOffStep: 4,
+    maxHits: 6000
+  }));
+
+  Scenes.register('eraser', build({
+    kind: 'eraser',
+    captions: [
+      'Квантовый ластик: на пути близнецов — полупрозрачные зеркала',
+      'Л и П — путь известен.  1 и 2 — путь стёрт',
+      'На общем экране по-прежнему две полосы',
+      'Раскрасим каждую точку по детектору её близнеца',
+      'Серые — путь известен: полос нет',
+      'Синие — путь стёрт (детектор 1): полосы!',
+      'Красные — детектор 2: тоже полосы, но сдвинутые',
+      'Синие + красные вместе — снова без полос'
+    ],
+    rates: [0, 0.6, 700, 0, 0, 0, 0, 0],
+    prefillFrom: 2,
+    curveStep: 99,
+    twinDelay: 2.6,
     maxHits: 6000
   }));
 
