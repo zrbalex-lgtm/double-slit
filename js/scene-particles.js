@@ -909,21 +909,21 @@
 
       // Detectors whose hits are shown on the screen right now (sorting steps)
       // Sorting steps: 3 both pairs by pair color, 4 front pair, 5 front pair split,
-      // 6 only detector 1, 7 only detector 2, 8 detectors 1 and 2 together
+      // 6 back pair in one color, 7 only detector 1, 8 only detector 2, 9 detectors 1 and 2 together
       const PAIR_COLOR = { front: '#f4f6fa', back: '#a77bff' };
       const PAIR_DOT = { front: 'rgba(244, 246, 250, 0.9)', back: 'rgba(167, 123, 255, 0.95)' };
       function isFront(g) { return g === 'L' || g === 'R'; }
       function erHighlighted(g) {
         if (step === 3) return true;
         if (step === 4 || step === 5) return isFront(g);
-        if (step === 6) return g === 'D1';
-        if (step === 7) return g === 'D2';
-        if (step >= 8) return !isFront(g);
+        if (step === 6 || step >= 9) return !isFront(g);
+        if (step === 7) return g === 'D1';
+        if (step === 8) return g === 'D2';
         return false;
       }
       // Color a detector (and its dots) is shown in at the current step
       function erColor(g) {
-        if (step === 3 || step === 4) return PAIR_COLOR[isFront(g) ? 'front' : 'back'];
+        if (step === 3 || step === 4 || step === 6) return PAIR_COLOR[isFront(g) ? 'front' : 'back'];
         return ER_COLOR[g];
       }
 
@@ -988,8 +988,9 @@
         if (step === 3) return pairDot;
         if (step === 4) return front ? pairDot : null;
         if (step === 5) return front ? ER_DOT[g] : null;
-        if (step === 6) return g === 'D1' ? ER_DOT[g] : null;
-        if (step === 7) return g === 'D2' ? ER_DOT[g] : null;
+        if (step === 6) return front ? null : pairDot;
+        if (step === 7) return g === 'D1' ? ER_DOT[g] : null;
+        if (step === 8) return g === 'D2' ? ER_DOT[g] : null;
         return front ? null : ER_DOT[g];
       }
 
@@ -1045,9 +1046,10 @@
           strokeCurve(leftBand, p, ER_COLOR.L, 4);
           strokeCurve(rightBand, p, ER_COLOR.R, 4);
         }
-        if (step === 6 || step >= 8) strokeCurve(blueFringe, p, ER_COLOR.D1, 4);
-        if (step === 7 || step >= 8) strokeCurve(redFringe, p, ER_COLOR.D2, 4);
-        if (step >= 8) strokeCurve(CURVES.twoBands, p, 'rgba(255, 255, 255, 0.95)', 3);
+        if (step === 6) strokeCurve(CURVES.twoBands, p, PAIR_COLOR.back, 4);
+        if (step === 7 || step >= 9) strokeCurve(blueFringe, p, ER_COLOR.D1, 4);
+        if (step === 8 || step >= 9) strokeCurve(redFringe, p, ER_COLOR.D2, 4);
+        if (step >= 9) strokeCurve(CURVES.twoBands, p, 'rgba(255, 255, 255, 0.95)', 3);
         ctx.restore();
       }
 
@@ -1447,7 +1449,7 @@
         }
         // Many hits per second: a rustle of quiet clicks instead of one per hit
         const busy = rate() >= 50 || (!quantum && rate() >= 5);
-        if (busy && spawned > 0 && Math.random() < 0.7) {
+        if (busy && !beam && spawned > 0 && Math.random() < 0.7) {
           if (quantum) Sfx.click(0.06 + Math.random() * 0.1);
           else Sfx.shot(0.15 + Math.random() * 0.1);
         }
@@ -1462,6 +1464,8 @@
               } else still.push(f);
             } else if (t >= f.t1 + f.t2) {
               addHit(now, f.hit, false, f.born);
+              // Every hit clicks while the stream is thin; later about 25 clicks per second
+              if (Math.random() < Math.min(1, 25 / Math.max(1, rate()))) Sfx.click(0.12 + Math.random() * 0.25);
             } else still.push(f);
             continue;
           }
@@ -1606,11 +1610,12 @@
       'Разделим точки по парам детекторов: передняя пара — белые, задняя — фиолетовые',
       'Только передняя пара: две полосы',
       'Раскрасим её: зелёная полоса от левой щели, красная от правой',
+      'Задняя пара (1 и 2): тоже две полосы',
       'Только детектор 1: полосы!',
       'Только детектор 2: тоже полосы, но сдвинутые на полшага',
       'Детекторы 1 и 2 вместе: полосы маскируют друг друга'
     ],
-    rates: [0, 0.6, 700, 0, 0, 0, 0, 0, 0],
+    rates: [0, 0.6, 700, 0, 0, 0, 0, 0, 0, 0],
     prefillFrom: 2,
     curveStep: 99,
     twinDelay: 2.6,

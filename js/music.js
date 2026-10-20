@@ -175,6 +175,9 @@ const Music = (function () {
   ['keydown', 'pointerdown'].forEach(function (ev) {
     window.addEventListener(ev, gesture, { capture: true });
   });
+  // Try to start right away; if the browser blocks autoplay, the context waits
+  // (suspended) and the first key press or click resumes it
+  if (on) start();
   window.addEventListener('keydown', function (e) {
     if (e.key === 'm' || e.key === 'M') toggle();
   });

@@ -50,6 +50,7 @@ const Sfx = (function () {
   ['keydown', 'pointerdown'].forEach(function (ev) {
     window.addEventListener(ev, ensure, { capture: true });
   });
+  ensure();   // works at once when the browser allows autoplay
 
   return { click: click, shot: shot, ensure: ensure };
 })();

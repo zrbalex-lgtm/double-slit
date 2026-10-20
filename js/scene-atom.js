@@ -130,7 +130,12 @@
       const y1 = y * Math.cos(inc) - z * Math.sin(inc), z1 = y * Math.sin(inc) + z * Math.cos(inc);
       const p = tt * prec;
       const x2 = x * Math.cos(p) + z1 * Math.sin(p), z2 = -x * Math.sin(p) + z1 * Math.cos(p);
-      return proj(x2 * R, y1 * R, z2 * R);
+      // Quantum "jitter": the electron trembles around its path, never quite sitting still
+      const wob = 14;
+      const wx = Math.sin(tt * 7.3) * 0.6 + Math.sin(tt * 12.9 + 1.7) * 0.4;
+      const wy = Math.sin(tt * 8.1 + 0.9) * 0.6 + Math.sin(tt * 15.7 + 2.3) * 0.4;
+      const wz = Math.sin(tt * 6.7 + 2.1) * 0.6 + Math.sin(tt * 11.3 + 0.4) * 0.4;
+      return proj(x2 * R + wx * wob, y1 * R + wy * wob, z2 * R + wz * wob);
     }
 
     function drawElectron(behind) {
