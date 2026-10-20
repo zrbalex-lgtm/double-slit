@@ -1,4 +1,5 @@
-/* Scene 3: waves from two slits, constructive and destructive points, screen pattern */
+/* Waves from two slits and the screen pattern; on the last click the setup shrinks to the
+   bottom-left and a side panel shows how two waves add up: crest + crest, crest + trough */
 (function () {
   'use strict';
 
@@ -21,8 +22,10 @@
   const CAPTIONS = [
     'Волна света подходит к двум щелям',
     'Из каждой щели расходится своя волна',
-    'На экране — чередование полос'
+    'На экране — чередование полос',
+    'Почему так: волны складываются'
   ];
+  const SHRINK = 0.72;       // scale of the setup while the explanation is shown
 
   // Wave amplitude falls off with distance from the slit
   function amp(r) {
@@ -76,8 +79,14 @@
     }
     for (let y = 0; y < H; y++) prof[y] /= pmax;
 
+    // Screen points for the explanation: central bright fringe and the first dark one
+    const Y_BRIGHT = YC;
+    let Y_DARK = YC;
+    for (let y = YC; y < YC + 120; y++) if (prof[y] < prof[Y_DARK]) Y_DARK = y;
+
     let step = 0;
     let t = 0;
+    let explainT0 = -1e9;     // real time of the explanation click
     let patternT0 = 0;      // sim time when the pattern starts to fade in
     const T_ARRIVE = SX / C; // sim time when the wave reaches the screen
 
@@ -163,12 +172,152 @@
       ctx.fillRect(SX, 0, SW, H);
     }
 
+    function ease(x) {
+      x = Math.max(0, Math.min(1, x));
+      return x * x * (3 - 2 * x);
+    }
+
+    // One strip with a traveling sine wave; returns its displacement at the marker x
+    function waveStrip(x, y, w, h, amp, phase, color, markerX) {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + w, y);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 4;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      for (let i = 0; i <= w; i += 2) {
+        const v = amp * Math.sin(i / w * 4 * Math.PI * 2 / 2 - phase);
+        if (i === 0) ctx.moveTo(x + i, y - v * h / 2);
+        else ctx.lineTo(x + i, y - v * h / 2);
+      }
+      ctx.stroke();
+      ctx.restore();
+      const vm = amp * Math.sin((markerX - x) / w * 4 * Math.PI - phase);
+      return vm;
+    }
+
+    function arrow(x, y0, y1, color) {
+      if (Math.abs(y1 - y0) < 6) return;
+      const dir = y1 < y0 ? -1 : 1;
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(x, y0);
+      ctx.lineTo(x, y1 - dir * 12);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, y1);
+      ctx.lineTo(x - 10, y1 - dir * 14);
+      ctx.lineTo(x + 10, y1 - dir * 14);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function bigText(txt, x, y, size, color, align) {
+      ctx.save();
+      ctx.font = '700 ' + size + 'px "Segoe UI", Roboto, Arial, sans-serif';
+      ctx.textAlign = align || 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.strokeText(txt, x, y);
+      ctx.fillStyle = color;
+      ctx.fillText(txt, x, y);
+      ctx.restore();
+    }
+
+    // One case of the explanation: wave 1 + wave 2 = result
+    function drawCase(x, y, title, shift, resultLabel, glowColor, now) {
+      const w = 270, h = 64, gap = 92;
+      const phase = now / 1000 * 2.2;
+      const mx = x + w * 0.375;   // marker sits on a crest of wave 1 at phase 0
+      bigText(title, x + w / 2 + 30, y, 26, glowColor);
+      const ya = y + 70, yb = ya + gap, yr = yb + gap + 18;
+      const va = waveStrip(x, ya, w, h, 1, phase, '#a8c86a', mx);
+      bigText('+', x - 34, (ya + yb) / 2, 40, '#ffffff');
+      const vb = waveStrip(x, yb, w, h, 1, phase + shift, '#4fb3d9', mx);
+      bigText('=', x - 34, (yb + yr) / 2 + 6, 40, '#ffffff');
+      waveStrip(x, yr, w, h, shift === 0 ? 2 : 0, phase, '#ffffff', mx);
+      // marker and arrows showing the displacement of each wave at the marker
+      ctx.save();
+      ctx.setLineDash([5, 6]);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(mx, ya - h / 2 - 10);
+      ctx.lineTo(mx, yr + h + 6);
+      ctx.stroke();
+      ctx.restore();
+      arrow(mx, ya, ya - va * h / 2, '#ffe14d');
+      arrow(mx, yb, yb - vb * h / 2, '#ffe14d');
+      arrow(mx, yr, yr - (va + vb) * h / 2, '#ffe14d');
+      bigText(resultLabel, x + w + 22, yr, 34, glowColor, 'left');
+    }
+
+    function drawExplanation(e, now, k, oy) {
+      ctx.save();
+      ctx.globalAlpha = e;
+      // Heading above the setup
+      bigText('Как складываются две волны', 590, 110, 46, '#e8eef8');
+      bigText('у экрана встречаются волны из левой и правой щели', 590, 168, 26, '#a9b8cf');
+      // Panel
+      const px = 1170, pw = 410;
+      ctx.fillStyle = 'rgba(10, 16, 28, 0.85)';
+      ctx.strokeStyle = 'rgba(120, 200, 255, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(px, 30, pw, 830, 16);
+      ctx.fill();
+      ctx.stroke();
+      drawCase(px + 64, 75, 'светлая полоса', 0, '2', '#fff3a0', now);
+      drawCase(px + 64, 485, 'тёмная полоса', Math.PI, '0', '#7f8da8', now);
+      // Links from fringes on the screen to the two cases
+      const sx = (SX + SW / 2) * k, sb = oy + Y_BRIGHT * k, sd = oy + Y_DARK * k;
+      [[sb, 150, '#fff3a0'], [sd, 560, '#9aa8c4']].forEach(function (l) {
+        ctx.save();
+        ctx.strokeStyle = l[2];
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 8]);
+        ctx.beginPath();
+        ctx.moveTo(sx + 10, l[0]);
+        ctx.lineTo(px - 6, l[1]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.shadowColor = l[2];
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        ctx.arc(sx, l[0], 9, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      });
+      ctx.restore();
+    }
+
     function draw() {
+      const now = performance.now();
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, W, H);
+      const e = step >= 3 ? ease((now - explainT0) / 900) : 0;
+      const k = 1 - (1 - SHRINK) * e;
+      const oy = H * (1 - k);    // anchored to the bottom-left corner
+      ctx.save();
+      ctx.translate(0, oy);
+      ctx.scale(k, k);
       renderField();
       drawSetup();
       if (step >= 2) drawPattern();
+      ctx.restore();
+      if (e > 0) drawExplanation(e, now, k, oy);
     }
 
     const loop = makeLoop(function (dt) {
@@ -187,6 +336,7 @@
         // Pattern fades in on click, but never before the wave reaches the screen
         patternT0 = Math.max(t, T_ARRIVE);
       }
+      if (s >= 3 && step < 3) explainT0 = step === 0 ? -1e9 : performance.now();
       step = s;
       captionEl.textContent = CAPTIONS[Math.min(s, CAPTIONS.length - 1)];
     }
