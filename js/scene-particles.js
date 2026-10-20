@@ -45,9 +45,26 @@
   const GUN_PIVOT = { x: 0, z: 2.0 };
   const BARREL_L = 2.2;                                   // pivot to muzzle
   const YAW_AMP = Math.atan(1.05 / (Z_BAR - GUN_PIVOT.z)); // sweep reaches +-1.05 at the wall
-  const YAW_JITTER = 0.006;
+  const YAW_SIGMA = 0.05;          // random scatter around the barrel direction, radians
   const PITCH_T0 = (0.6 - BEAM_Y) / (Z_SCR - GUN_PIVOT.z); // vertical scatter (tangent range)
   const PITCH_T1 = (4.3 - BEAM_Y) / (Z_SCR - GUN_PIVOT.z);
+
+  function gauss() {
+    return Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
+  }
+
+  // Random bullet direction around the current barrel yaw: Gaussian scatter, so the wall
+  // gets a ragged cloud of holes instead of a neat rectangle
+  const PITCH_MID = (PITCH_T0 + PITCH_T1) / 2;
+  const PITCH_SIGMA = (PITCH_T1 - PITCH_T0) / 3.2;
+  const PITCH_MAX = (BAR_H - 0.08 - BEAM_Y) / (Z_BAR - GUN_PIVOT.z);   // never over the wall
+  function scatter(barrelYaw) {
+    let tp;
+    do { tp = PITCH_MID + gauss() * PITCH_SIGMA; } while (tp > PITCH_MAX || tp < PITCH_T0 - 0.05);
+    // Occasional wild shot
+    const wide = Math.random() < 0.12 ? 3 : 1;
+    return { yaw: barrelYaw + gauss() * YAW_SIGMA * wide, tp: tp };
+  }
 
   // Trajectory of one bullet for barrel yaw `yaw` (radians) and pitch tangent `tp`
   function bulletShot(yaw, tp) {
@@ -136,8 +153,8 @@
   const bulletProfile = (function () {
     const hist = new Float32Array(TW);
     for (let i = 0; i < 400000; i++) {
-      const yaw = (Math.random() * 2 - 1) * YAW_AMP + (Math.random() * 2 - 1) * YAW_JITTER;
-      const h = bulletShot(yaw, PITCH_T0 + Math.random() * (PITCH_T1 - PITCH_T0));
+      const d = scatter((Math.random() * 2 - 1) * YAW_AMP);
+      const h = bulletShot(d.yaw, d.tp);
       if (!h.wall) {
         const k = Math.round(h.tx);
         if (k >= 0 && k < TW) hist[k]++;
@@ -1132,8 +1149,8 @@
       }
 
       function fireBullet(now) {
-        const yaw = gunYaw + (Math.random() * 2 - 1) * YAW_JITTER;
-        const h = bulletShot(yaw, PITCH_T0 + Math.random() * (PITCH_T1 - PITCH_T0));
+        const d = scatter(gunYaw);
+        const h = bulletShot(d.yaw, d.tp);
         const dist = Math.hypot(h.end.x - h.start.x, h.end.y - h.start.y, h.end.z - h.start.z);
         const speed = rate() < 5 ? 13 : 24;
         shots++;
@@ -1143,7 +1160,7 @@
 
       // Triangle wave sweep of the gun, faster during a burst
       function updateGun(dt) {
-        if (step >= 1 && count < opts.maxHits) gunPhase += dt * (rate() < 5 ? 0.12 : 0.55);
+        if (step >= 1 && shots < opts.maxShots) gunPhase += dt * (rate() < 5 ? 0.12 : 0.55);
         const t = gunPhase % 1;
         gunYaw = YAW_AMP * (t < 0.5 ? 4 * t - 1 : 3 - 4 * t);
       }
@@ -1160,9 +1177,9 @@
       function prefill(total) {
         const now = performance.now();
         if (kind === 'bullets') {
-          while (count < total) {
-            const yaw = (Math.random() * 2 - 1) * YAW_AMP;
-            const h = bulletShot(yaw, PITCH_T0 + Math.random() * (PITCH_T1 - PITCH_T0));
+          while (shots < opts.maxShots) {
+            const d = scatter((Math.random() * 2 - 1) * YAW_AMP);
+            const h = bulletShot(d.yaw, d.tp);
             shots++;
             const f = { born: now, hit: h, n: shots };
             if (!h.wall) reveal(h, now);
@@ -1182,7 +1199,8 @@
       }
 
       function spawn(now) {
-        if (count + inFlight() >= opts.maxHits) return false;
+        if (kind === 'bullets' && shots >= opts.maxShots) return false;
+        if (kind !== 'bullets' && count + inFlight() >= opts.maxHits) return false;
         const r = rate();
         if (!quantum) {
           fireBullet(now);
@@ -1224,7 +1242,7 @@
             f.landed = true;
             if (kind === 'bullets') landBullet(now, f);
             else addHit(now, f.hit, rate() < 5, f.born);
-            if (!busy) Sfx.click(quantum ? 0.7 : (f.hit.wall ? 0.45 : 0.3));
+            if (!busy && quantum) Sfx.click(0.7);
           }
           // The twin reaches its detector (later than the screen hit when delayed)
           const twinDone = !twins || now - f.born >= f.dur * (SPLIT + (1 - SPLIT) * TWIN_DELAY);
@@ -1278,10 +1296,12 @@
       'Очередь!',
       'Результат: две полосы — напротив каждой щели'
     ],
-    rates: [0, 2.5, 520, 520],
+    rates: [0, 2.5, 420, 420],
     curveStep: 3,
     curve: 'bullets',
-    maxHits: 1400
+    noLog: true,
+    maxShots: 5000,
+    maxHits: 1e9
   }));
 
   Scenes.register('beam', build({
