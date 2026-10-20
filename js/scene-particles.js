@@ -941,14 +941,21 @@
       }
 
       // Detectors whose hits are shown on the screen right now (sorting steps)
+      // Sorting steps: 3 both pairs by pair color, 4 front pair, 5 front pair split,
+      // 6 back pair, 7 back pair split, 8 everything in full color
+      const PAIR_COLOR = { front: '#f4f6fa', back: '#a77bff' };
+      const PAIR_DOT = { front: 'rgba(244, 246, 250, 0.9)', back: 'rgba(167, 123, 255, 0.95)' };
+      function isFront(g) { return g === 'L' || g === 'R'; }
       function erHighlighted(g) {
-        const known = g === 'L' || g === 'R';
-        if (step === 3) return true;
-        if (step === 4) return known;
-        if (step === 5) return g === 'D1';
-        if (step === 6) return g === 'D2';
-        if (step >= 7) return !known;
+        if (step === 3 || step >= 8) return true;
+        if (step === 4 || step === 5) return isFront(g);
+        if (step === 6 || step === 7) return !isFront(g);
         return false;
+      }
+      // Color a detector (and its dots) is shown in at the current step
+      function erColor(g) {
+        if (step === 3 || step === 4 || step === 6) return PAIR_COLOR[isFront(g) ? 'front' : 'back'];
+        return ER_COLOR[g];
       }
 
       function drawEraserDetector(g, now) {
@@ -961,9 +968,9 @@
           const q0 = project(d.x, 0.02, d.z);
           ctx.save();
           ctx.globalAlpha = 0.55 * pulse;
-          ctx.strokeStyle = ER_COLOR[g];
+          ctx.strokeStyle = erColor(g);
           ctx.lineWidth = 4;
-          ctx.shadowColor = ER_COLOR[g];
+          ctx.shadowColor = erColor(g);
           ctx.shadowBlur = 22;
           ctx.beginPath();
           ctx.ellipse(q0.x, q0.y, 0.62 * q0.s, 0.3 * q0.s, 0, 0, Math.PI * 2);
@@ -974,7 +981,8 @@
         if (sorting && !hl) ctx.globalAlpha = 0.35;
         box(d.x - 0.08, d.x + 0.08, 0, BEAM_Y - 0.3, d.z - 0.08, d.z + 0.08, DET_COL);
         box(d.x - 0.3, d.x + 0.3, BEAM_Y - 0.3, BEAM_Y + 0.3, d.z - 0.3, d.z + 0.3, DET_COL);
-        lamp(d.x, BEAM_Y + 0.3, d.z, lampT[g] || -1e9, now, true, ER_COLOR[g], hl ? 0.85 + 0.15 * Math.sin(now / 260) : 0);
+        lamp(d.x, BEAM_Y + 0.3, d.z, lampT[g] || -1e9, now, true, sorting ? erColor(g) : ER_COLOR[g],
+          hl ? 0.85 + 0.15 * Math.sin(now / 260) : 0);
         const q = project(d.x, BEAM_Y + 0.85, d.z);
         drawLabel(ctx, ER_LABEL[g], q.x, q.y, 'center', ER_COLOR[g]);
         ctx.restore();
@@ -1006,12 +1014,14 @@
       function dotStyle(hit) {
         if (!eraser || step < 3) return look.dot;
         const g = hit.group;
-        const known = g === 'L' || g === 'R';
-        if (step === 3) return ER_DOT[g];
-        if (step === 4) return known ? ER_DOT[g] : null;
-        if (step === 5) return g === 'D1' ? ER_DOT[g] : null;
-        if (step === 6) return g === 'D2' ? ER_DOT[g] : null;
-        return known ? null : ER_DOT[g];
+        const front = isFront(g);
+        const pairDot = PAIR_DOT[front ? 'front' : 'back'];
+        if (step === 3) return pairDot;
+        if (step === 4) return front ? pairDot : null;
+        if (step === 5) return front ? ER_DOT[g] : null;
+        if (step === 6) return front ? null : pairDot;
+        if (step === 7) return front ? null : ER_DOT[g];
+        return ER_DOT[g];
       }
 
       function drawDot(hit) {
@@ -1061,13 +1071,16 @@
       function drawEraserCurves(now) {
         const p = Math.min(1, (now - curveT0) / 1500);
         ctx.save();
-        if (step === 4) {
-          strokeCurve(leftBand, p, ER_COLOR.L, 4);
-          strokeCurve(rightBand, p, ER_COLOR.R, 4);
+        if (step === 4) strokeCurve(CURVES.twoBands, p, PAIR_COLOR.front, 4);
+        if (step === 6) strokeCurve(CURVES.twoBands, p, PAIR_COLOR.back, 4);
+        if (step === 5 || step >= 8) {
+          strokeCurve(leftBand, p, ER_COLOR.L, step >= 8 ? 3 : 4);
+          strokeCurve(rightBand, p, ER_COLOR.R, step >= 8 ? 3 : 4);
         }
-        if (step === 5 || step >= 7) strokeCurve(blueFringe, p, ER_COLOR.D1, 4);
-        if (step === 6 || step >= 7) strokeCurve(redFringe, p, ER_COLOR.D2, 4);
-        if (step >= 7) strokeCurve(CURVES.twoBands, p, 'rgba(255, 255, 255, 0.95)', 4);
+        if (step === 7 || step >= 8) {
+          strokeCurve(blueFringe, p, ER_COLOR.D1, step >= 8 ? 3 : 4);
+          strokeCurve(redFringe, p, ER_COLOR.D2, step >= 8 ? 3 : 4);
+        }
         ctx.restore();
       }
 
@@ -1621,13 +1634,14 @@
       'Квантовый ластик: на пути близнецов — полупрозрачные зеркала',
       'Л и П — путь известен.  1 и 2 — путь стёрт',
       'На общем экране по-прежнему две полосы',
-      'Раскрасим каждую точку по детектору её близнеца',
-      'Зелёные и красные — путь известен: полос нет',
-      'Синие — путь стёрт (детектор 1): полосы!',
-      'Жёлтые — детектор 2: тоже полосы, но сдвинутые',
-      'Синие + жёлтые вместе — снова без полос'
+      'Разделим точки по парам детекторов: передняя пара — белые, задняя — фиолетовые',
+      'Только передняя пара: две полосы',
+      'Раскрасим её: зелёная полоса от левой щели, красная от правой',
+      'Только задняя пара: тоже две полосы',
+      'Раскрасим её: полосы! Синие и жёлтые сдвинуты на полшага',
+      'Все цвета вместе'
     ],
-    rates: [0, 0.6, 700, 0, 0, 0, 0, 0],
+    rates: [0, 0.6, 700, 0, 0, 0, 0, 0, 0],
     prefillFrom: 2,
     curveStep: 99,
     twinDelay: 2.6,
