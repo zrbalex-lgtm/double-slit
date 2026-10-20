@@ -16,7 +16,7 @@ const Music = (function () {
   ];
   const SPARKLE = [N(3), N(5), N(7), N(10), N(12), N(15), N(17), N(19)];   // C E... pentatonic-ish, octave 5-6
 
-  let ctx = null, master = null, padBus = null, filter = null, wet = null;
+  let ctx = null, master = null, padBus = null, filter = null, wet = null, verbNode = null;
   let timer = null, nextChordAt = 0, chordI = 0, nextSparkle = 0;
   let on = new URLSearchParams(location.search).get('music') !== '0';
   let started = false;
@@ -68,7 +68,7 @@ const Music = (function () {
     padBus.connect(filter);
 
     // Sparkles go mostly into the reverb
-    Music._verb = verb;
+    verbNode = verb;
     return true;
   }
 
@@ -116,7 +116,7 @@ const Music = (function () {
     g.gain.linearRampToValueAtTime(0.05, t0 + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + 3);
     o.connect(g);
-    g.connect(Music._verb);
+    g.connect(verbNode);
     o.start(t0);
     o.stop(t0 + 3.1);
   }
