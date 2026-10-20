@@ -41,7 +41,13 @@
       </section>
 
 
-      <!-- 3: electron beam, like the light experiment -->
+      <!-- 3: atom, the electron as a real particle -->
+      <section data-scene="atom">
+        <canvas width="1600" height="900"></canvas>
+        <aside class="notes">Про свет решили: волна, ну и ладно. А электрон — настоящая частица: у него есть масса и заряд, он сидит в атоме. Правда, даже здесь он ведёт себя странно: не съезжает плавно между орбитами, а прыгает сразу, испуская или поглощая порцию света — фотон. Дальше — стреляем электронами по щелям.</aside>
+      </section>
+
+      <!-- 4: electron beam, like the light experiment -->
       <section data-scene="beam">
         <canvas width="1600" height="900"></canvas>
         <div class="caption"></div>
@@ -63,8 +69,8 @@
         <canvas width="1600" height="900"></canvas>
         <div class="caption"></div>
         <span class="fragment step"></span><span class="fragment step"></span>
-        <span class="fragment step"></span><span class="fragment step"></span>
-        <aside class="notes">Клик 1 — электроны по одному, загорается лампочка у одной щели. 2 — тысячи, видно две полосы. 3 — кривая: две полосы, пунктиром — интерференция, которая была без датчиков. 4 — лампочки выключены, никто не смотрит, датчики только пишут в журнал — полос всё равно нет. Важна сама информация о пути, а не взгляд человека.</aside>
+        <span class="fragment step"></span>
+        <aside class="notes">Клик 1 — электроны по одному, загорается лампочка у одной щели. 2 — тысячи, видно две полосы. 3 — кривая: две полосы, пунктиром — интерференция, которая была без датчиков. Сказать словами: даже если никто не смотрит и датчики только пишут в журнал, полос всё равно нет. Важна сама информация о пути, а не взгляд человека.</aside>
       </section>
 
       <!-- 6: entangled twin photons -->
@@ -96,13 +102,37 @@
         <aside class="notes">Близнец идёт на полупрозрачное зеркало: отражается — в свой детектор Л или П (путь известен); проходит — попадает на второе зеркало, где пути смешиваются, и в детектор 1 или 2 (путь стёрт, уже не узнать, какая щель). Клик 1 — по одному, в журнале «…», потом детектор. 2 — тысячи: на экране две полосы, чуда нет. 3 — раскрашиваем по детектору близнеца. 4 — только зелёные и красные (путь известен): полос нет. 5 — только синие: полосы! 6 — только жёлтые: полосы, сдвинутые. 7 — синие + жёлтые вместе: полосы гасят друг друга, снова две полосы. Главное: на общем экране полосы не видны никогда, только после сортировки по журналу близнецов.</aside>
       </section>
 
-      <!-- 9 -->
-      <section><div class="ph"><div class="num">9</div><h2>Честный момент</h2>
-        <p>Сигнал в прошлое послать нельзя</p><p class="todo">заглушка</p></div></section>
-
-      <!-- 10 -->
-      <section><div class="ph"><div class="num">10</div><h2>Пока нет следа о пути — частица ведёт себя как волна</h2>
-        <p class="todo">заглушка: цитата Фейнмана + фото живых полос</p></div></section>
+      <!-- quantum world overview -->
+      <section data-scene="qworld">
+        <canvas width="1600" height="900"></canvas>
+        <div class="qw">
+          <h1>Квантовый мир</h1>
+          <div class="qw-grid">
+            <div class="qw-card">
+              <svg viewBox="0 0 80 80"><circle cx="30" cy="40" r="20" fill="rgba(90,200,255,0.35)" stroke="#5ac8ff" stroke-width="2"/><circle cx="50" cy="40" r="20" fill="rgba(200,140,255,0.35)" stroke="#c88cff" stroke-width="2"/></svg>
+              <h3>Суперпозиция</h3><p>и тут, и там — пока нет следа</p>
+            </div>
+            <div class="qw-card">
+              <svg viewBox="0 0 80 80"><path d="M14 40 C 26 20, 34 60, 40 40 S 54 20, 66 40" fill="none" stroke="#ff7ab6" stroke-width="3"/><circle cx="14" cy="40" r="7" fill="#5ac8ff"/><circle cx="66" cy="40" r="7" fill="#ff7ab6"/></svg>
+              <h3>Запутанность</h3><p>пара связана на любом расстоянии</p>
+            </div>
+            <div class="qw-card">
+              <svg viewBox="0 0 80 80"><rect x="36" y="12" width="9" height="56" fill="#7d879b"/><path d="M4 40 q 4 -16 8 0 t 8 0 t 8 0 t 8 0" fill="none" stroke="#5ac8ff" stroke-width="3"/><path d="M48 40 q 3 -7 6 0 t 6 0 t 6 0 t 6 0" fill="none" stroke="#5ac8ff" stroke-width="2.5" opacity="0.7"/></svg>
+              <h3>Туннелирование</h3><p>сквозь стену — так светит Солнце</p>
+            </div>
+            <div class="qw-card">
+              <svg viewBox="0 0 80 80"><defs><radialGradient id="qwb"><stop offset="0" stop-color="#ffd54a"/><stop offset="1" stop-color="#ffd54a" stop-opacity="0"/></radialGradient></defs><circle cx="40" cy="40" r="22" fill="url(#qwb)"/><path d="M40 40 L64 26 M40 40 L18 58 M40 40 L60 60" stroke="#ffd54a" stroke-width="2" opacity="0.7"/></svg>
+              <h3>Неопределённость</h3><p>нельзя знать точно и «где», и «куда»</p>
+            </div>
+          </div>
+          <p class="qw-uses fragment">лазер · транзистор · светодиод · МРТ · атомные часы</p>
+          <div class="qw-quotes fragment">
+            <blockquote>«Shut up and calculate!»<cite>Дэвид Мермин, 1989</cite></blockquote>
+            <blockquote>«Квантовую механику не понимает никто»<cite>Ричард Фейнман</cite></blockquote>
+          </div>
+        </div>
+        <aside class="notes">Обзор: законы квантового мира точнее всех других теорий, на них работает вся электроника — но интуитивно их не понимает никто. Клик 1 — где это работает. Клик 2 — цитаты.</aside>
+      </section>
 
     </div>
   </div>
@@ -112,7 +142,11 @@
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/registry.js"></script>
+<script src="js/glossary.js"></script>
+<script src="js/music.js"></script>
 <script src="js/scene-title.js"></script>
+<script src="js/scene-atom.js"></script>
+<script src="js/scene-qworld.js"></script>
 <script src="js/scene-waves.js"></script>
 <script src="js/scene-particles.js"></script>
 <script src="js/main.js"></script>

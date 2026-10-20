@@ -275,8 +275,6 @@
       ctx.save();
       ctx.globalAlpha = e;
       // Heading above the setup
-      bigText('Как складываются две волны', 590, 110, 46, '#e8eef8');
-      bigText('у экрана встречаются волны из левой и правой щели', 590, 168, 26, '#a9b8cf');
       // Panel
       const px = 1170, pw = 410;
       ctx.fillStyle = 'rgba(10, 16, 28, 0.85)';
@@ -326,10 +324,13 @@
       if (step >= 2) drawPattern();
       ctx.restore();
       if (e > 0) drawExplanation(e, now, k, oy);
+      drawPlaque(ctx, { year: '1801–1803', place: 'Англия, Лондон', who: 'Томас Юнг — свет через две щели' }, 30, e > 0 ? 40 : 762);
     }
 
     const loop = makeLoop(function (dt) {
-      if (step >= 1) t += dt;
+      // The field runs three times slower while the explanation is on screen
+      const slow = step >= 3 ? ease((performance.now() - explainT0) / 900) : 0;
+      if (step >= 1) t += dt * (1 - slow * 2 / 3);
       draw();
     });
 

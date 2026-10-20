@@ -505,22 +505,147 @@
         side: 'rgba(90, 180, 220, 0.3)', edge: 'rgba(160, 230, 255, 0.7)'
       };
 
-      function drawFloor() {
+      // ---------- backdrop: a dim server-room aisle with a lit floor ----------
+      // Static parts are rendered once into a cache; only rack LEDs are animated.
+      const RACK_ROWS = [
+        { x0: -13.2, x1: -11.8 },   // left row, aisle face at x1
+        { x0: 10.6, x1: 12.0 }      // right row, aisle face at x0
+      ];
+      const RACK_Z0 = -2, RACK_LEN = 1.3, RACK_N = 15, RACK_H = 5.2;
+      const RACK_COL = { front: '#0b1018', top: '#141b27', side: '#0e1520', edge: 'rgba(60, 90, 130, 0.35)' };
+      const leds = [];
+      for (let r = 0; r < RACK_ROWS.length; r++) {
+        const row = RACK_ROWS[r];
+        const fx = r === 0 ? row.x1 + 0.01 : row.x0 - 0.01;
+        for (let k = 0; k < RACK_N; k++) {
+          const z0 = RACK_Z0 + k * RACK_LEN;
+          for (let u = 0; u < 14; u++) {
+            if (Math.random() < 0.35) continue;
+            leds.push({
+              x: fx, y: 0.5 + u * 0.32, z: z0 + 0.2 + Math.random() * (RACK_LEN - 0.4),
+              c: Math.random() < 0.7 ? '90, 200, 255' : (Math.random() < 0.6 ? '80, 255, 160' : '255, 180, 70'),
+              f: 0.3 + Math.random() * 2.5, ph: Math.random() * 6.28
+            });
+          }
+        }
+      }
+
+      function floorPool(x, z, rx, color, a) {
+        const q = project(x, 0, z);
+        const r = rx * q.s;
+        ctx.save();
+        ctx.translate(q.x, q.y);
+        ctx.scale(1, 0.42);
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+        g.addColorStop(0, 'rgba(' + color + ',' + a + ')');
+        g.addColorStop(1, 'rgba(' + color + ',0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawBackdropStatic() {
+        // Back wall with soft vertical light strips
+        poly([[-45, 0, 19], [45, 0, 19], [45, 30, 19], [-45, 30, 19]], '#070b13', null);
+        // Side walls behind the rack rows, so no empty sky shows above them
+        poly([[-13.3, 0, -6], [-13.3, 0, 19], [-13.3, 30, 19], [-13.3, 30, -6]], '#060a12', null);
+        poly([[12.1, 0, -6], [12.1, 0, 19], [12.1, 30, 19], [12.1, 30, -6]], '#060a12', null);
+        for (let x = -18.9; x <= 18; x += 2.3) {
+          const a = project(x, 0.3, 18.98), b = project(x, 14, 18.98);
+          const g = ctx.createLinearGradient(0, a.y, 0, b.y);
+          g.addColorStop(0, 'rgba(80, 160, 255, 0.0)');
+          g.addColorStop(0.5, 'rgba(80, 160, 255, 0.22)');
+          g.addColorStop(1, 'rgba(80, 160, 255, 0.0)');
+          ctx.fillStyle = g;
+          ctx.fillRect(a.x - 2, b.y, 4, a.y - b.y);
+        }
+        // Floor
+        poly([[-22, 0, -4], [20, 0, -4], [20, 0, 19], [-22, 0, 19]], '#05080f', null);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        floorPool(0, 13.5, 10, '60, 150, 255', 0.16);
+        floorPool(0, 6, 7, '60, 150, 255', 0.12);
+        floorPool(0, 1.5, 5, '90, 120, 255', 0.08);
+        floorPool(-12.4, 6, 4, '60, 200, 255', 0.06);
+        ctx.restore();
+        // Grid: brighter near the middle of the room
         ctx.save();
         ctx.lineWidth = 1;
-        ctx.strokeStyle = 'rgba(90, 110, 140, 0.18)';
-        ctx.beginPath();
-        for (let x = -9; x <= 9; x += 1) {
-          const a = project(x, 0, -1.5), b = project(x, 0, Z_SCR + 2);
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
+        for (let x = -11; x <= 10; x += 1) {
+          const a = project(x, 0, -3), b = project(x, 0, 18.5);
+          ctx.strokeStyle = 'rgba(100, 150, 210,' + (0.28 - Math.abs(x) * 0.016).toFixed(3) + ')';
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
         }
-        for (let z = -1; z <= Z_SCR + 2; z += 1) {
-          const a = project(-9, 0, z), b = project(9, 0, z);
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
+        for (let z = -3; z <= 18; z += 1) {
+          const a = project(-11.8, 0, z), b = project(10.6, 0, z);
+          const g = ctx.createLinearGradient(a.x, 0, b.x, 0);
+          g.addColorStop(0, 'rgba(100, 150, 210, 0.05)');
+          g.addColorStop(0.5, 'rgba(100, 150, 210, 0.28)');
+          g.addColorStop(1, 'rgba(100, 150, 210, 0.05)');
+          ctx.strokeStyle = g;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
         }
-        ctx.stroke();
+        ctx.restore();
+        // Rack rows, far to near
+        for (let k = RACK_N - 1; k >= 0; k--) {
+          const z0 = RACK_Z0 + k * RACK_LEN;
+          RACK_ROWS.forEach(function (row) {
+            box(row.x0, row.x1, 0, RACK_H, z0 + 0.04, z0 + RACK_LEN - 0.04, RACK_COL);
+          });
+        }
+        // Dim LED sockets
+        for (const l of leds) {
+          const q = project(l.x, l.y, l.z);
+          ctx.fillStyle = 'rgba(' + l.c + ', 0.12)';
+          ctx.fillRect(q.x - 1, q.y - 1, 2.5, 2.5);
+        }
+        // Light strip along the floor at the foot of each rack row
+        RACK_ROWS.forEach(function (row, r) {
+          const fx = r === 0 ? row.x1 + 0.05 : row.x0 - 0.05;
+          const a = project(fx, 0.02, RACK_Z0), b = project(fx, 0.02, RACK_Z0 + RACK_N * RACK_LEN);
+          ctx.save();
+          ctx.strokeStyle = 'rgba(80, 180, 255, 0.55)';
+          ctx.lineWidth = 2;
+          ctx.shadowColor = '#4fb4ff';
+          ctx.shadowBlur = 14;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+          ctx.restore();
+        });
+      }
+
+      // Render the static backdrop once into a cache (with the same horizontal shift as the scene)
+      const envCache = document.createElement('canvas');
+      envCache.width = W;
+      envCache.height = H;
+      (function () {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, H);
+        ctx.translate(shiftX, 0);
+        drawBackdropStatic();
+        ctx.restore();
+        envCache.getContext('2d').drawImage(canvas, 0, 0);
+      })();
+
+      function drawFloor(now) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(envCache, 0, 0);
+        ctx.restore();
+        // Blinking rack LEDs
+        const t = now / 1000;
+        ctx.save();
+        for (const l of leds) {
+          const v = Math.sin(t * l.f + l.ph);
+          if (v < 0.35) continue;
+          const q = project(l.x, l.y, l.z);
+          ctx.fillStyle = 'rgba(' + l.c + ',' + (0.35 + 0.65 * v).toFixed(2) + ')';
+          ctx.fillRect(q.x - 1.2, q.y - 1.2, 3, 3);
+        }
         ctx.restore();
       }
 
@@ -1136,7 +1261,7 @@
         ctx.save();
         ctx.translate(shiftX, 0);
         // Painter's order: far to near
-        drawFloor();
+        drawFloor(now);
         drawScreen();
         drawRecent(now);
         if (eraser) {
@@ -1164,6 +1289,9 @@
         drawGun(now);
         ctx.restore();
         if (!opts.noLog) drawLog(now);
+        // Bottom-left when there is no log, otherwise under the log panel
+        if (opts.noLog) drawPlaque(ctx, opts.history, 30, 762);
+        else drawPlaque(ctx, opts.history, 1570, 770, true);
       }
 
       // ---------- simulation ----------
@@ -1423,6 +1551,7 @@
 
   Scenes.register('bullets', build({
     kind: 'bullets',
+    history: { year: '1963', place: 'мысленный опыт', who: 'Ричард Фейнман, «Фейнмановские лекции по физике»' },
     captions: [
       'Что будет, если стрелять частицами по стене с двумя щелями?',
       'Почти все пули попадают в стену, но некоторые проскакивают в щель',
@@ -1433,12 +1562,13 @@
     curveStep: 3,
     curve: 'bullets',
     noLog: true,
-    maxShots: 5000,
+    maxShots: 2500,
     maxHits: 1e9
   }));
 
   Scenes.register('beam', build({
     kind: 'beam',
+    history: { year: '1961', place: 'Германия, Тюбинген', who: 'Клаус Йёнссон — пучок электронов через щели' },
     captions: [
       'Опыт как со светом, только вместо света — пучок электронов',
       'Включаем пучок: летят тысячи электронов…',
@@ -1454,6 +1584,7 @@
 
   Scenes.register('electrons', build({
     kind: 'electrons',
+    history: { year: '1974 · 1989', place: 'Италия, Болонья · Япония, Hitachi', who: 'Мерли, Миссироли, Поцци · Акира Тономура' },
     captions: [
       'А если пускать электроны по одному?',
       'Один электрон — одна точка',
@@ -1469,23 +1600,23 @@
 
   Scenes.register('which-path', build({
     kind: 'which-path',
+    history: { year: '1998', place: 'Израиль, Институт Вейцмана', who: 'Эяль Букс, Мордехай Хейблум и др. — датчик пути электрона' },
     captions: [
       'Ставим у каждой щели датчик: он замечает, где прошёл электрон',
       'Датчик всякий раз срабатывает только у одной щели',
       'Копим тысячи электронов…',
-      'Полосы исчезли: две полосы, как от шариков',
-      'Никто не смотрит, датчики только пишут в журнал — полос всё равно нет'
+      'Полосы исчезли: две полосы, как от шариков'
     ],
-    rates: [0, 0.9, 700, 700, 700],
+    rates: [0, 0.9, 700, 700],
     curveStep: 3,
     curve: 'twoBands',
     ghost: true,
-    lampsOffStep: 4,
     maxHits: 6000
   }));
 
   Scenes.register('eraser', build({
     kind: 'eraser',
+    history: { year: '1999', place: 'США, Мэриленд', who: 'Ким, Ши, Скалли и др. · идея — Скалли и Друль, 1982' },
     captions: [
       'Квантовый ластик: на пути близнецов — полупрозрачные зеркала',
       'Л и П — путь известен.  1 и 2 — путь стёрт',
@@ -1505,6 +1636,7 @@
 
   Scenes.register('delayed', build({
     kind: 'delayed',
+    history: { year: '1999', place: 'США, Мэриленд', who: 'Юн-Хо Ким, Янхуа Ши, Марлан Скалли и др.' },
     captions: [
       'Отложенный выбор: детекторы близнецов унесли далеко',
       'Фотон уже на экране, а его близнец ещё летит',
@@ -1521,6 +1653,7 @@
 
   Scenes.register('twins', build({
     kind: 'twins',
+    history: { year: '2002', place: 'Бразилия, Белу-Оризонти', who: 'Стивен Уолборн и др. — запутанные фотоны' },
     captions: [
       'У щелей кристаллы: фотон превращается в пару близнецов',
       'Один близнец летит на экран, второй — в детектор Л или П',

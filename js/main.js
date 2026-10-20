@@ -7,6 +7,7 @@
   const zone = Math.max(0, Math.min(45, parseFloat(params.get('zone') || '0')));
   document.documentElement.style.setProperty('--zone', zone + 'vw');
   if (params.get('side') === 'left') document.body.classList.add('zone-left');
+  if (params.get('captions') === '1') document.body.classList.add('show-captions');
 
   // Create scene instances for every canvas slide
   const instances = [];

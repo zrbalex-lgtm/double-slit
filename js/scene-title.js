@@ -1,6 +1,6 @@
 /* Title scene: an animated collage of quantum imagery around the title.
-   Interference field, entangled pair with a double helix, Bloch sphere, orbital cloud,
-   wave packet and fringe graphs, Feynman diagram, floating formulas. */
+   Every element stands for a concept from GLOSSARY (glossary.js): hovering it with the mouse
+   shows a card; when the mouse is idle, a guided tour highlights the elements one by one. */
 (function () {
   'use strict';
 
@@ -8,17 +8,17 @@
   const TAU = Math.PI * 2;
 
   const FORMULAS = [
-    { t: 'iħ ∂ψ/∂t = Ĥψ', x: 560, y: 120, s: 30 },
-    { t: '|Ψ⟩ = (|↑↓⟩ − |↓↑⟩) / √2', x: 1010, y: 125, s: 28 },
-    { t: 'Δx · Δp ≥ ħ/2', x: 120, y: 420, s: 26 },
-    { t: 'λ = h / p', x: 1380, y: 420, s: 28 },
-    { t: 'P(x) = |ψ₁ + ψ₂|²', x: 560, y: 795, s: 28 },
-    { t: 'E = hν', x: 1005, y: 800, s: 28 },
-    { t: 'ψ(x,t) = A·exp[i(kx − ωt)]', x: 95, y: 615, s: 22 },
-    { t: '⟨ψ|ψ⟩ = 1', x: 1390, y: 610, s: 24 },
-    { t: 'ΔE · Δt ≥ ħ/2', x: 700, y: 60, s: 20 },
-    { t: '|ψ⟩ = α|0⟩ + β|1⟩', x: 300, y: 70, s: 20 },
-    { t: 'Ĥ = −ħ²/2m ∇² + V', x: 1150, y: 60, s: 20 }
+    { id: 'f_schrodinger', t: 'iħ ∂ψ/∂t = Ĥψ', x: 560, y: 120, s: 30 },
+    { id: 'f_singlet', t: '|Ψ⟩ = (|↑↓⟩ − |↓↑⟩) / √2', x: 1010, y: 125, s: 28 },
+    { id: 'f_heisenberg', t: 'Δx · Δp ≥ ħ/2', x: 120, y: 420, s: 26 },
+    { id: 'f_debroglie', t: 'λ = h / p', x: 1380, y: 420, s: 28 },
+    { id: 'f_born', t: 'P(x) = |ψ₁ + ψ₂|²', x: 560, y: 795, s: 28 },
+    { id: 'f_planck', t: 'E = hν', x: 1005, y: 800, s: 28 },
+    { id: 'f_plane', t: 'ψ(x,t) = A·exp[i(kx − ωt)]', x: 95, y: 615, s: 22 },
+    { id: 'f_norm', t: '⟨ψ|ψ⟩ = 1', x: 1390, y: 610, s: 24 },
+    { id: 'f_energytime', t: 'ΔE · Δt ≥ ħ/2', x: 700, y: 60, s: 20 },
+    { id: 'f_qubit', t: '|ψ⟩ = α|0⟩ + β|1⟩', x: 300, y: 70, s: 20 },
+    { id: 'f_hamiltonian', t: 'Ĥ = −ħ²/2m ∇² + V', x: 1150, y: 60, s: 20 }
   ];
 
   Scenes.register('title', function (canvas) {
@@ -55,6 +55,30 @@
       g.globalCompositeOperation = 'source-over';
       g.strokeStyle = 'rgba(120, 180, 255, 0.045)';
       g.lineWidth = 1;
+      const S = 46;
+      for (let row = 0; row * S * 0.866 < H + S; row++) {
+        for (let col = 0; col * S * 1.5 < W + S; col++) {
+          const cx = col * S * 1.5, cy = row * S * 1.732 + (col % 2) * S * 0.866;
+          g.beginPath();
+          for (let k = 0; k < 6; k++) {
+            const a = k * TAU / 6;
+            const px = cx + S * 0.5 * Math.cos(a), py = cy + S * 0.5 * Math.sin(a);
+            if (k === 0) g.moveTo(px, py);
+            else g.lineTo(px, py);
+          }
+          g.closePath();
+          g.stroke();
+        }
+      }
+    })();
+
+    const latticeGlow = document.createElement('canvas');
+    latticeGlow.width = W;
+    latticeGlow.height = H;
+    (function () {
+      const g = latticeGlow.getContext('2d');
+      g.strokeStyle = 'rgba(120, 210, 255, 0.5)';
+      g.lineWidth = 1.5;
       const S = 46;
       for (let row = 0; row * S * 0.866 < H + S; row++) {
         for (let col = 0; col * S * 1.5 < W + S; col++) {
@@ -434,6 +458,7 @@
         ctx.shadowColor = 'rgba(90, 170, 255, 0.9)';
         ctx.shadowBlur = 12;
         ctx.fillText(f.t, f.x, f.y + dy);
+        f.box = { x: f.x - 8, y: f.y + dy - f.s * 0.7, w: ctx.measureText(f.t).width + 16, h: f.s * 1.4 };
       });
       ctx.restore();
     }
@@ -471,6 +496,171 @@
       ctx.restore();
     }
 
+    // ---------- what each element means: regions, hover cards, guided tour ----------
+    const RING = { cx: W / 2, cy: H / 2, rx: 340 * 1.55, ry: 340 * 0.78 };
+    function ringR(x, y) {
+      return Math.hypot((x - RING.cx) / RING.rx, (y - RING.cy) / RING.ry);
+    }
+    const REGIONS = [
+      { id: 'bloch', shape: 'circle', x: 250, y: 225, r: 135 },
+      { id: 'orbital', shape: 'circle', x: 1350, y: 230, r: 150 },
+      { id: 'fringeGraph', shape: 'rect', x: 70, y: 470, w: 280, h: 120 },
+      { id: 'packetGraph', shape: 'rect', x: 1250, y: 470, w: 280, h: 120 },
+      { id: 'feynman', shape: 'rect', x: 1270, y: 630, w: 260, h: 150 },
+      { id: 'spin', shape: 'circle', x: 330, y: 720, r: 60 },
+      { id: 'spin', shape: 'circle', x: 1100, y: 720, r: 60 },
+      { id: 'entangled', shape: 'rect', x: 390, y: 672, w: 650, h: 96 },
+      { id: 'title', shape: 'rect', x: 480, y: 330, w: 640, h: 220 },
+      { id: 'rings', shape: 'ring' },
+      { id: 'interference', shape: 'ellipse' }
+    ];
+
+    function regionHit(r, x, y) {
+      if (r.shape === 'circle') return Math.hypot(x - r.x, y - r.y) < r.r;
+      if (r.shape === 'rect') return x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h;
+      if (r.shape === 'ring') { const q = ringR(x, y); return q > 0.86 && q < 1.04; }
+      if (r.shape === 'ellipse') return ringR(x, y) <= 0.86;
+      return false;
+    }
+
+    function hitTest(x, y) {
+      for (const f of FORMULAS) {
+        const b = f.box;
+        if (b && x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) return { id: f.id, shape: 'rect', x: b.x, y: b.y, w: b.w, h: b.h };
+      }
+      for (const r of REGIONS) if (regionHit(r, x, y)) return r;
+      for (const m of motes) if (Math.hypot(x - m.x, y - m.y) < 18) return { id: 'motes', shape: 'motes' };
+      if (ringR(x, y) > 1.12) return { id: 'lattice', shape: 'lattice' };
+      return null;
+    }
+
+    function regionFor(id) {
+      const f = FORMULAS.find(function (q) { return q.id === id; });
+      if (f && f.box) return { id: id, shape: 'rect', x: f.box.x, y: f.box.y, w: f.box.w, h: f.box.h };
+      const r = REGIONS.find(function (q) { return q.id === id; });
+      if (r) return r;
+      if (id === 'motes') return { id: id, shape: 'motes' };
+      if (id === 'lattice') return { id: id, shape: 'lattice' };
+      return null;
+    }
+
+    function anchorOf(r) {
+      if (r.shape === 'circle') return { x: r.x, y: r.y, rx: r.r, ry: r.r };
+      if (r.shape === 'rect') return { x: r.x + r.w / 2, y: r.y + r.h / 2, rx: r.w / 2, ry: r.h / 2 };
+      if (r.shape === 'ring') return { x: RING.cx + RING.rx * 0.7, y: RING.cy - RING.ry * 0.72, rx: 10, ry: 10 };
+      if (r.shape === 'ellipse') return { x: RING.cx, y: RING.cy + 170, rx: 200, ry: 60 };
+      return { x: W / 2, y: H - 120, rx: 10, ry: 10 };
+    }
+
+    function highlight(r, now) {
+      const pulse = 0.65 + 0.35 * Math.sin(now / 220);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(140, 225, 255,' + (0.9 * pulse).toFixed(2) + ')';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = '#5ad0ff';
+      ctx.shadowBlur = 22;
+      ctx.beginPath();
+      if (r.shape === 'circle') ctx.arc(r.x, r.y, r.r, 0, TAU);
+      else if (r.shape === 'rect') ctx.roundRect(r.x - 6, r.y - 6, r.w + 12, r.h + 12, 10);
+      else if (r.shape === 'ring') {
+        ctx.ellipse(RING.cx, RING.cy, RING.rx * 0.86, RING.ry * 0.86, 0, 0, TAU);
+        ctx.moveTo(RING.cx + RING.rx * 1.04, RING.cy);
+        ctx.ellipse(RING.cx, RING.cy, RING.rx * 1.04, RING.ry * 1.04, 0, 0, TAU);
+      } else if (r.shape === 'ellipse') ctx.ellipse(RING.cx, RING.cy, RING.rx * 0.84, RING.ry * 0.84, 0, 0, TAU);
+      else if (r.shape === 'motes') motes.slice(0, 8).forEach(function (m) { ctx.moveTo(m.x + 16, m.y); ctx.arc(m.x, m.y, 16, 0, TAU); });
+      ctx.stroke();
+      if (r.shape === 'lattice') {
+        ctx.globalAlpha = 0.6 * pulse;
+        ctx.drawImage(latticeGlow, 0, 0);
+      }
+      ctx.restore();
+    }
+
+    function wrap(text, maxW) {
+      const words = text.split(' ');
+      const lines = [];
+      let line = '';
+      words.forEach(function (w) {
+        const test = line ? line + ' ' + w : w;
+        if (ctx.measureText(test).width > maxW && line) {
+          lines.push(line);
+          line = w;
+        } else line = test;
+      });
+      if (line) lines.push(line);
+      return lines;
+    }
+
+    function card(r, now) {
+      const g = GLOSSARY[r.id];
+      if (!g) return;
+      const CW = 470, PAD = 22;
+      ctx.save();
+      ctx.font = '400 20px "Exo 2", "Segoe UI", sans-serif';
+      const lines = wrap(g.text.replace(/<[^>]+>/g, ''), CW - 2 * PAD);
+      const CH = 96 + lines.length * 27 + PAD;
+      // Place the card beside the element, on the side facing the middle of the screen
+      const a = anchorOf(r);
+      let x = a.x < W / 2 ? a.x + a.rx + 26 : a.x - a.rx - 26 - CW;
+      let y = a.y - CH / 2;
+      if (r.shape === 'lattice' || r.shape === 'motes') { x = W / 2 - CW / 2; y = H - CH - 30; }
+      x = Math.max(16, Math.min(W - CW - 16, x));
+      y = Math.max(16, Math.min(H - CH - 16, y));
+      const appear = Math.min(1, (now - cardT0) / 250);
+      ctx.globalAlpha = appear;
+      ctx.fillStyle = 'rgba(6, 14, 30, 0.92)';
+      ctx.strokeStyle = 'rgba(120, 210, 255, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'rgba(60, 160, 255, 0.6)';
+      ctx.shadowBlur = 30;
+      ctx.beginPath();
+      ctx.roundRect(x, y, CW, CH, 16);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.stroke();
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = '600 15px "Exo 2", "Segoe UI", sans-serif';
+      ctx.fillStyle = '#5ad0ff';
+      ctx.fillText(g.tag.toUpperCase(), x + PAD, y + 34);
+      ctx.font = '700 30px "Exo 2", "Segoe UI", sans-serif';
+      ctx.fillStyle = '#f2f8ff';
+      ctx.fillText(g.name, x + PAD, y + 72);
+      ctx.font = '400 20px "Exo 2", "Segoe UI", sans-serif';
+      ctx.fillStyle = '#c4d2e6';
+      lines.forEach(function (ln, i) { ctx.fillText(ln, x + PAD, y + 108 + i * 27); });
+      ctx.restore();
+    }
+
+    // Mouse hover (canvas is scaled by Reveal, so map client coordinates)
+    let mouse = null, mouseT = -1e9, cardT0 = 0, shownId = null;
+    canvas.addEventListener('mousemove', function (e) {
+      const rc = canvas.getBoundingClientRect();
+      mouse = { x: (e.clientX - rc.left) / rc.width * W, y: (e.clientY - rc.top) / rc.height * H };
+      mouseT = performance.now();
+    });
+    canvas.addEventListener('mouseleave', function () { mouse = null; });
+
+    // Guided tour while the mouse is idle; key G pauses / resumes it
+    const TOUR_IDLE = 5000, TOUR_STEP = 7500;
+    let tourOn = true, tourI = 0, tourT0 = 0;
+    window.addEventListener('keydown', function (e) {
+      if ((e.key === 'g' || e.key === 'G') && canvas.offsetParent !== null) tourOn = !tourOn;
+    });
+
+    function activeRegion(now) {
+      if (mouse && now - mouseT < TOUR_IDLE) {
+        const r = hitTest(mouse.x, mouse.y);
+        tourT0 = now;
+        return r;
+      }
+      if (!tourOn) return null;
+      if (now - tourT0 > TOUR_STEP) {
+        tourI = (tourI + 1) % GLOSSARY_TOUR.length;
+        tourT0 = now;
+      }
+      return regionFor(GLOSSARY_TOUR[tourI]);
+    }
+
     let t = 0;
     function draw(dt) {
       ctx.drawImage(bg, 0, 0);
@@ -486,6 +676,14 @@
       drawFormulas(t);
       drawMotes(dt);
       drawTitle(t);
+      const now = performance.now();
+      const r = activeRegion(now);
+      const id = r ? r.id : null;
+      if (id !== shownId) { shownId = id; cardT0 = now; }
+      if (r) {
+        highlight(r, now);
+        card(r, now);
+      }
     }
 
     const loop = makeLoop(function (dt) {
