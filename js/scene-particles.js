@@ -1,5 +1,6 @@
 /* Particle scenes in perspective from behind and above the source, with a launch log on the right.
-   'bullets'    : classical balls from a machine gun, two bands behind the slits
+   'bullets'    : machine gun swinging on a tripod; most bullets hit the wall, the rest make two bands
+   'beam'       : a continuous electron beam, like light: interference fringes appear on the screen
    'electrons'  : path unknown, interference fringes build up
    'which-path' : detectors at the slits record the path, two bands
    'twins'      : each photon becomes a twin pair at the slit; the twin reveals the path, two bands
@@ -39,12 +40,36 @@
   const SEP_PX = 115;              // which-path: band centers
   const SINGLE_PX = 165;           // which-path: band half width (first zero)
 
-  // Machine gun: straight lines from the barrel end through a slit to the screen
-  const Z_MUZZLE = Z_GUN + 0.9;
-  const K_PROJ = (Z_SCR - Z_MUZZLE) / (Z_BAR - Z_MUZZLE);
-  const SPREAD = 0.3;              // random spread of bullets on the screen, world units
-  const BULLET_Y0 = BEAM_Y + (0.35 - BEAM_Y) / K_PROJ;          // keep hits on the screen
-  const BULLET_Y1 = Math.min(SLIT_Y1, BEAM_Y + (SCR_H - 0.35 - BEAM_Y) / K_PROJ);
+  // Machine gun on a tripod: the gun swings left-right around a vertical axis behind the barrel.
+  // Bullets fly along the barrel line through the pivot; most of them hit the wall.
+  const GUN_PIVOT = { x: 0, z: 2.0 };
+  const BARREL_L = 2.2;                                   // pivot to muzzle
+  const YAW_AMP = Math.atan(1.05 / (Z_BAR - GUN_PIVOT.z)); // sweep reaches +-1.05 at the wall
+  const YAW_JITTER = 0.006;
+  const PITCH_T0 = (0.6 - BEAM_Y) / (Z_SCR - GUN_PIVOT.z); // vertical scatter (tangent range)
+  const PITCH_T1 = (4.3 - BEAM_Y) / (Z_SCR - GUN_PIVOT.z);
+
+  // Trajectory of one bullet for barrel yaw `yaw` (radians) and pitch tangent `tp`
+  function bulletShot(yaw, tp) {
+    const ty = Math.tan(yaw);
+    const zm = GUN_PIVOT.z + BARREL_L * Math.cos(yaw);
+    const at = function (z) {
+      return { x: GUN_PIVOT.x + (z - GUN_PIVOT.z) * ty, y: BEAM_Y + (z - GUN_PIVOT.z) * tp, z: z };
+    };
+    const start = at(zm);
+    const b = at(Z_BAR);
+    let slit = 0;
+    [-1, 1].forEach(function (sd) {
+      if (Math.abs(b.x - sd * SLIT_X) < SLIT_W / 2 - 0.01 && b.y > SLIT_Y0 && b.y < SLIT_Y1) slit = sd;
+    });
+    if (!slit) return { start: start, end: b, wall: true, slit: 0 };
+    const e = at(Z_SCR);
+    return {
+      start: start, end: e, wall: false, slit: slit,
+      tx: (e.x / SCR_W + 0.5) * TW,
+      ty: (1 - e.y / SCR_H) * TH
+    };
+  }
 
   // Twin detectors (left of the barrier, on the source side); the delayed scene moves them far away
   const TWIN_DET_NEAR = {
@@ -107,11 +132,34 @@
   function bandWP(dx, slit) {
     return sinc2(Math.PI * (dx - slit * SEP_PX) / SINGLE_PX);
   }
-  const BULLET_C = SLIT_X * K_PROJ * PX_PER_UNIT;
-  const BULLET_S = Math.sqrt(Math.pow(SLIT_W * K_PROJ, 2) / 12 + SPREAD * SPREAD) * PX_PER_UNIT;
-  function bandBullet(dx, slit) {
-    const d = (dx - slit * BULLET_C) / BULLET_S;
-    return Math.exp(-0.5 * d * d);
+  // Bullet pattern on the screen, measured by simulating many shots (then smoothed)
+  const bulletProfile = (function () {
+    const hist = new Float32Array(TW);
+    for (let i = 0; i < 400000; i++) {
+      const yaw = (Math.random() * 2 - 1) * YAW_AMP + (Math.random() * 2 - 1) * YAW_JITTER;
+      const h = bulletShot(yaw, PITCH_T0 + Math.random() * (PITCH_T1 - PITCH_T0));
+      if (!h.wall) {
+        const k = Math.round(h.tx);
+        if (k >= 0 && k < TW) hist[k]++;
+      }
+    }
+    const out = new Float32Array(TW);
+    const R = 8;
+    for (let k = 0; k < TW; k++) {
+      let s = 0, w = 0;
+      for (let j = -3 * R; j <= 3 * R; j++) {
+        const g = Math.exp(-0.5 * (j / R) * (j / R));
+        const m = k + j;
+        if (m >= 0 && m < TW) s += hist[m] * g;
+        w += g;
+      }
+      out[k] = s / w;
+    }
+    return out;
+  })();
+  function bulletCurve(dx) {
+    const k = Math.round(dx + TW / 2);
+    return k >= 0 && k < TW ? bulletProfile[k] : 0;
   }
   // Scale a curve so its peak is 1
   function normalized(f) {
@@ -122,7 +170,7 @@
   const CURVES = {
     fringes: fringes,
     twoBands: normalized(function (d) { return bandWP(d, -1) + bandWP(d, 1); }),
-    bullets: normalized(function (d) { return bandBullet(d, -1) + bandBullet(d, 1); })
+    bullets: normalized(bulletCurve)
   };
 
   function rejection(f) {
@@ -130,9 +178,6 @@
       const d = (Math.random() * 2 - 1) * TW / 2;
       if (Math.random() < f(d)) return d;
     }
-  }
-  function gauss() {
-    return Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
   }
   function randomTy() {
     return 10 + Math.random() * (TH - 20);
@@ -161,20 +206,7 @@
     if (kind === 'which-path' || kind === 'twins' || kind === 'delayed') {
       return { tx: TW / 2 + rejection(function (d) { return bandWP(d, slit); }), ty: randomTy(), slit: slit };
     }
-    // bullets: straight line through a random point of the slit opening
-    for (;;) {
-      const xs = slit * SLIT_X + (Math.random() - 0.5) * SLIT_W;
-      const ys = BULLET_Y0 + Math.random() * (BULLET_Y1 - BULLET_Y0);
-      const x = xs * K_PROJ + gauss() * SPREAD;
-      const y = BEAM_Y + (ys - BEAM_Y) * K_PROJ + gauss() * SPREAD * 0.5;
-      if (Math.abs(x) > SCR_W / 2 - 0.1 || y < 0.1 || y > SCR_H - 0.1) continue;
-      return {
-        tx: (x / SCR_W + 0.5) * TW,
-        ty: (1 - y / SCR_H) * TH,
-        slit: slit,
-        end: { x: x, y: y, z: Z_SCR }
-      };
-    }
+    return null;
   }
 
   // Texture px -> world point on the screen surface
@@ -184,7 +216,8 @@
 
   // Per-kind look
   const LOOK = {
-    bullets: { dot: 'rgba(205, 210, 220, 0.9)', glow: '#d9dee8', noun: 'шариков', slitHead: 'щель' },
+    bullets: { dot: 'rgba(205, 210, 220, 0.9)', glow: '#ffd27a', noun: 'выстрелов', slitHead: 'куда' },
+    beam: { dot: 'rgba(205, 255, 228, 0.9)', glow: '#7fffb0', noun: '', slitHead: '' },
     electrons: { dot: 'rgba(205, 255, 228, 0.9)', glow: '#7fffb0', noun: 'электронов', slitHead: 'щель' },
     'which-path': { dot: 'rgba(205, 255, 228, 0.9)', glow: '#7fffb0', noun: 'электронов', slitHead: 'щель' },
     twins: { dot: 'rgba(255, 228, 160, 0.9)', glow: '#ffd166', noun: 'фотонов', slitHead: 'близнец' }
@@ -202,6 +235,8 @@
       const quantum = kind !== 'bullets';
       const eraser = kind === 'eraser';
       const twins = kind === 'twins' || kind === 'delayed' || eraser;
+      const beam = kind === 'beam';
+      const shiftX = opts.noLog ? W / 2 - FRAME_X : 0;   // center the setup when there is no log
       const TWIN_DET = kind === 'delayed' ? TWIN_DET_FAR : TWIN_DET_NEAR;
       const TWIN_DELAY = opts.twinDelay || 1;   // twin flight time relative to its partner's
 
@@ -224,6 +259,42 @@
       const tally = { '-1': 0, '1': 0 };
       const erTally = { L: 0, R: 0, D1: 0, D2: 0 };
       let hits = [];              // every hit, so the screen can be recolored by the twin's detector
+
+      // Machine gun state
+      let gunPhase = 0;           // sweep phase, turns
+      let gunYaw = 0;
+      let flashT = -1e9;          // last muzzle flash
+      let shots = 0;
+      let wallCount = 0;
+      let sparks = [];            // fresh wall impacts
+      const WTW = 640, WTH = 208; // wall texture (bullet marks), maps onto the barrier front
+      const wallTex = document.createElement('canvas');
+      wallTex.width = WTW;
+      wallTex.height = WTH;
+      const wctx = wallTex.getContext('2d');
+
+      // Beam state
+      let beamT0 = 0;
+      const glowTex = beam ? makeGlowTex() : null;
+
+      function makeGlowTex() {
+        const c = document.createElement('canvas');
+        c.width = TW;
+        c.height = TH;
+        const g = c.getContext('2d');
+        for (let k = 0; k < TW; k++) {
+          const b = fringes(k - TW / 2);
+          g.fillStyle = 'rgba(140, 255, 195,' + (0.85 * b).toFixed(3) + ')';
+          g.fillRect(k, 0, 1, TH);
+        }
+        // Grain: it is made of countless electrons
+        g.fillStyle = 'rgba(230, 255, 240, 0.5)';
+        for (let i = 0; i < 9000; i++) {
+          const x = TW / 2 + rejection(fringes);
+          g.fillRect(x, Math.random() * TH, 1.6, 1.6);
+        }
+        return c;
+      }
 
       function rate() {
         return opts.rates[Math.min(step, opts.rates.length - 1)];
@@ -257,6 +328,172 @@
         if (CAM.x > x1) poly([[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]], col.side, edge);
         if (CAM.y > y1) poly([[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], col.top, edge);
         poly([[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]], col.front, edge);
+      }
+
+      // Box in gun-local coordinates rotated by `yaw` around a vertical axis through `pv`.
+      // Local +z points along the barrel, +x to the gun's right, y is world height.
+      function rbox(lx0, lx1, y0, y1, lz0, lz1, col, yaw, pv) {
+        const c = Math.cos(yaw), sn = Math.sin(yaw);
+        const W3 = function (lx, y, lz) { return [pv.x + lx * c + lz * sn, y, pv.z - lx * sn + lz * c]; };
+        const faces = [
+          { n: [c, 0, -sn], pts: [W3(lx1, y0, lz0), W3(lx1, y1, lz0), W3(lx1, y1, lz1), W3(lx1, y0, lz1)], f: col.side },
+          { n: [-c, 0, sn], pts: [W3(lx0, y0, lz0), W3(lx0, y1, lz0), W3(lx0, y1, lz1), W3(lx0, y0, lz1)], f: col.side },
+          { n: [0, 1, 0], pts: [W3(lx0, y1, lz0), W3(lx1, y1, lz0), W3(lx1, y1, lz1), W3(lx0, y1, lz1)], f: col.top },
+          { n: [sn, 0, c], pts: [W3(lx0, y0, lz1), W3(lx1, y0, lz1), W3(lx1, y1, lz1), W3(lx0, y1, lz1)], f: col.front },
+          { n: [-sn, 0, -c], pts: [W3(lx0, y0, lz0), W3(lx1, y0, lz0), W3(lx1, y1, lz0), W3(lx0, y1, lz0)], f: col.front }
+        ];
+        faces.forEach(function (fc) {
+          let cx = 0, cy = 0, cz = 0;
+          fc.pts.forEach(function (p) { cx += p[0] / 4; cy += p[1] / 4; cz += p[2] / 4; });
+          const v = fc.n[0] * (CAM.x - cx) + fc.n[1] * (CAM.y - cy) + fc.n[2] * (CAM.z - cz);
+          if (v > 0) poly(fc.pts, fc.f, col.edge || null);
+        });
+      }
+
+      const MG = {
+        metal: { front: '#3a3f47', top: '#5d6470', side: '#2b2f35', edge: 'rgba(0,0,0,0.55)' },
+        jacket: { front: '#474d57', top: '#6c7480', side: '#353a42', edge: 'rgba(0,0,0,0.55)' },
+        ring: { front: '#2a2e34', top: '#4a505a', side: '#22262b', edge: 'rgba(0,0,0,0.6)' },
+        ammo: { front: '#4b5233', top: '#69724a', side: '#3a4027', edge: 'rgba(0,0,0,0.5)' },
+        wood: { front: '#5a3f2a', top: '#7a573b', side: '#47311f', edge: 'rgba(0,0,0,0.5)' }
+      };
+
+      function drawMachineGun(now) {
+        const pv = GUN_PIVOT;
+        const head = BEAM_Y - 0.28;
+        // Tripod legs (static)
+        ctx.save();
+        ctx.strokeStyle = '#2b2f35';
+        ctx.lineCap = 'round';
+        [[-1.0, -0.7], [1.0, -0.7], [0, 1.0]].forEach(function (f) {
+          const a = project(pv.x, head, pv.z);
+          const b = project(pv.x + f[0], 0, pv.z + f[1]);
+          ctx.lineWidth = Math.max(4, 0.09 * (a.s + b.s) / 2);
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        });
+        ctx.restore();
+        box(pv.x - 0.12, pv.x + 0.12, head - 0.1, head + 0.08, pv.z - 0.12, pv.z + 0.12, MG.metal);
+
+        // Rotating parts, painted far to near
+        const yaw = gunYaw, y = BEAM_Y;
+        const parts = [
+          { lz: 1.95, d: function () { rbox(-0.05, 0.05, y - 0.05, y + 0.05, 1.7, BARREL_L, MG.metal, yaw, pv); } },
+          { lz: 1.05, d: function () { rbox(-0.13, 0.13, y - 0.13, y + 0.13, 0.35, 1.72, MG.jacket, yaw, pv); } },
+          { lz: 1.62, d: function () { rbox(-0.11, 0.11, y + 0.13, y + 0.24, 1.6, 1.66, MG.metal, yaw, pv); } },
+          { lz: 0.5, d: function () { rbox(-0.15, 0.15, y - 0.15, y + 0.15, 0.48, 0.56, MG.ring, yaw, pv); } },
+          { lz: 1.1, d: function () { rbox(-0.15, 0.15, y - 0.15, y + 0.15, 1.08, 1.16, MG.ring, yaw, pv); } },
+          { lz: 1.6, d: function () { rbox(-0.15, 0.15, y - 0.15, y + 0.15, 1.52, 1.6, MG.ring, yaw, pv); } },
+          { lz: -0.25, d: function () { rbox(-0.22, 0.22, y - 0.22, y + 0.2, -0.9, 0.38, MG.metal, yaw, pv); } },
+          { lz: 0.12, d: function () { rbox(-0.05, 0.05, y + 0.2, y + 0.32, 0.08, 0.18, MG.metal, yaw, pv); } },
+          { lz: -0.15, d: function () { rbox(-0.6, -0.24, y - 0.38, y + 0.02, -0.45, 0.15, MG.ammo, yaw, pv); } },
+          { lz: -1.0, d: function () { rbox(-0.2, -0.12, y - 0.18, y + 0.06, -1.15, -0.9, MG.wood, yaw, pv); } },
+          { lz: -1.0, d: function () { rbox(0.12, 0.2, y - 0.18, y + 0.06, -1.15, -0.9, MG.wood, yaw, pv); } }
+        ];
+        parts.sort(function (a, b) { return b.lz - a.lz; });
+        parts.forEach(function (p) { p.d(); });
+
+        // Muzzle flash
+        const a = Math.max(0, 1 - (now - flashT) / 70);
+        if (a > 0) {
+          const m = { x: pv.x + (BARREL_L + 0.1) * Math.sin(yaw), z: pv.z + (BARREL_L + 0.1) * Math.cos(yaw) };
+          const q = project(m.x, y, m.z);
+          ctx.save();
+          ctx.globalAlpha = a;
+          const g = ctx.createRadialGradient(q.x, q.y, 0, q.x, q.y, 0.45 * q.s);
+          g.addColorStop(0, 'rgba(255, 250, 210, 1)');
+          g.addColorStop(0.35, 'rgba(255, 190, 80, 0.85)');
+          g.addColorStop(1, 'rgba(255, 120, 30, 0)');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, 0.45 * q.s, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      // Bullet marks on the wall, mapped onto the barrier front face row by row
+      function drawWallMarks() {
+        const hw = BAR_W / 2, ROW = 2;
+        for (let j = 0; j < WTH; j += ROW) {
+          const ya = BAR_H * (1 - j / WTH), yb = BAR_H * (1 - (j + ROW) / WTH);
+          const pl = project(-hw, ya, Z_BAR - 0.005);
+          const pr = project(hw, ya, Z_BAR - 0.005);
+          const pb = project(-hw, yb, Z_BAR - 0.005);
+          ctx.drawImage(wallTex, 0, j, WTW, ROW, pl.x, pl.y, pr.x - pl.x, pb.y - pl.y + 0.7);
+        }
+      }
+
+      function drawSparks(now) {
+        ctx.save();
+        for (const sp of sparks) {
+          const a = 1 - (now - sp.born) / 260;
+          const q = project(sp.x, sp.y, Z_BAR - 0.02);
+          ctx.globalAlpha = Math.max(0, a);
+          ctx.fillStyle = '#ffd27a';
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, (0.04 + (1 - a) * 0.12) * q.s, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // Continuous beam: a glowing stream from the gun that spreads over both slits
+      function drawBeamStream(now) {
+        if (step < 1) return;
+        const z0 = Z_GUN + 0.35, z1 = Z_BAR - 0.02;
+        const w0 = 0.1, w1 = SLIT_X + 0.35;
+        ctx.save();
+        for (let i = 0; i < 24; i++) {
+          const u0 = i / 24, u1 = (i + 1) / 24;
+          const za = z0 + (z1 - z0) * u0, zb = z0 + (z1 - z0) * u1;
+          const wa = w0 + (w1 - w0) * u0, wb = w0 + (w1 - w0) * u1;
+          const pulse = 0.5 + 0.5 * Math.sin((u0 * 9 - now / 140) * Math.PI);
+          ctx.globalAlpha = 0.18 + 0.22 * pulse;
+          poly([[-wa, BEAM_Y, za], [wa, BEAM_Y, za], [wb, BEAM_Y, zb], [-wb, BEAM_Y, zb]], '#7fffb0', null);
+        }
+        ctx.restore();
+      }
+
+      // Continuous ripples from both slits toward the screen
+      function drawBeamRipples(now) {
+        if (step < 1) return;
+        const L = Z_SCR - Z_BAR, GAP = 0.55;
+        ctx.save();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = look.glow;
+        const r0 = ((now - beamT0) / 1000 * 2.2) % GAP;
+        const reach = Math.min(L, (now - beamT0) / 1000 * 2.2);
+        for (let r = r0; r < reach; r += GAP) {
+          ctx.globalAlpha = 0.5 * (1 - r / L * 0.75);
+          [-SLIT_X, SLIT_X].forEach(function (cx) {
+            ctx.beginPath();
+            for (let k = 0; k <= 40; k++) {
+              const ang = (k / 40 - 0.5) * RIPPLE_SPAN;
+              const x = cx + r * Math.sin(ang);
+              const z = Z_BAR + BAR_T + r * Math.cos(ang);
+              if (z > Z_SCR || Math.abs(x) > SCR_W / 2) continue;
+              const q = project(x, BEAM_Y, z);
+              if (k === 0) ctx.moveTo(q.x, q.y);
+              else ctx.lineTo(q.x, q.y);
+            }
+            ctx.stroke();
+          });
+        }
+        ctx.restore();
+      }
+
+      // Screen glow grows once the beam reaches the screen
+      function updateBeamScreen(now) {
+        if (step < 1) return;
+        const travel = (Z_SCR - Z_BAR) / 2.2 * 1000;
+        const p = Math.max(0, Math.min(1, (now - beamT0 - travel) / 3500));
+        tctx.clearRect(0, 0, TW, TH);
+        tctx.globalAlpha = p;
+        tctx.drawImage(glowTex, 0, 0);
+        tctx.globalAlpha = 1;
       }
 
       function glowDot(x, y, z, radius, color, alpha) {
@@ -353,14 +590,9 @@
         });
       }
 
-      function drawGun() {
+      function drawGun(now) {
         if (kind === 'bullets') {
-          const c = GUN_COLS.bullets;
-          // Far to near: long barrel, magazine, stand, body
-          box(-0.09, 0.09, BEAM_Y - 0.09, BEAM_Y + 0.09, Z_GUN, Z_MUZZLE, c);
-          box(-0.12, 0.12, BEAM_Y - 0.75, BEAM_Y - 0.3, Z_GUN - 0.7, Z_GUN - 0.35, c);
-          box(-0.15, 0.15, 0, BEAM_Y - 0.3, Z_GUN - 1.2, Z_GUN - 0.8, c);
-          box(-0.32, 0.32, BEAM_Y - 0.3, BEAM_Y + 0.3, Z_GUN - 1.7, Z_GUN, c);
+          drawMachineGun(now);
           return;
         }
         const c = twins ? GUN_COLS.photon : GUN_COLS.electron;
@@ -509,15 +741,25 @@
 
       // Bullets fly straight; the part beyond the barrier is drawn before it, the near part after
       function drawBullets(now, far) {
+        ctx.save();
         for (const f of flights) {
           const u = (now - f.born) / f.dur;
           if (u < 0 || u > 1) continue;
-          const e = f.hit.end;
-          const z = Z_MUZZLE + (Z_SCR - Z_MUZZLE) * u;
+          const a = f.hit.start, e = f.hit.end;
+          const z = a.z + (e.z - a.z) * u;
           if ((z > Z_BAR) !== far) continue;
-          const k = (z - Z_MUZZLE) / (Z_SCR - Z_MUZZLE);
-          glowDot(e.x * k, BEAM_Y + (e.y - BEAM_Y) * k, z, 0.07, look.glow);
+          const q = project(a.x + (e.x - a.x) * u, a.y + (e.y - a.y) * u, z);
+          const r = Math.max(2, (rate() < 5 ? 0.06 : 0.035) * q.s);
+          ctx.fillStyle = rate() < 5 ? 'rgba(255, 200, 110, 0.35)' : 'rgba(255, 200, 110, 0.18)';
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, r * 2.2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff1c9';
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, r, 0, Math.PI * 2);
+          ctx.fill();
         }
+        ctx.restore();
       }
 
       function drawRecent(now) {
@@ -688,10 +930,11 @@
         { head: 'удар, с', x: 160 },
         { head: 'x, мм', x: 248 },
         { head: 'y, мм', x: 320 },
-        { head: look.slitHead, x: 392 }
+        { head: look.slitHead, x: 400 }
       ];
 
       function slitText(row) {
+        if (kind === 'bullets' && row.hit.wall) return 'стена';
         if (kind === 'electrons') return '?';
         if (eraser) return row.hit.twinSeen ? ER_LABEL[row.hit.group] : '…';
         if (twins && !row.hit.twinSeen) return '…';
@@ -716,9 +959,13 @@
         ctx.font = '500 21px "Segoe UI", Roboto, Arial, sans-serif';
         ctx.textAlign = 'right';
         ctx.fillStyle = '#cfe9da';
-        ctx.fillText(look.noun + ': ' + count, LOG_X + LOG_W - 14, LOG_Y + 26);
+        ctx.fillText(look.noun + ': ' + (kind === 'bullets' ? shots : count), LOG_X + LOG_W - 14, LOG_Y + 26);
         ctx.textAlign = 'left';
-        if (eraser) {
+        if (kind === 'bullets') {
+          ctx.fillStyle = '#ffd27a';
+          ctx.fillText('в стену: ' + wallCount + '    через щель:  Л ' + tally['-1'] + '  П ' + tally['1'],
+            LOG_X + 14, LOG_Y + 56);
+        } else if (eraser) {
           ctx.fillStyle = '#ffb3d6';
           ctx.fillText('близнецы:  Л ' + erTally.L + '  П ' + erTally.R + '   1: ' + erTally.D1 + '  2: ' + erTally.D2,
             LOG_X + 14, LOG_Y + 56);
@@ -754,9 +1001,11 @@
           const vals = [String(r.n), r.tL.toFixed(3), r.tH.toFixed(3), r.x.toFixed(1), r.y.toFixed(1)];
           vals.forEach(function (v, k) { ctx.fillText(v, LOG_X + COLS[k].x, y); });
           const st = slitText(r);
-          ctx.fillStyle = st === '?' ? '#ffd54a' : (st === '…' ? '#8a96ab' :
+          ctx.fillStyle = st === '?' ? '#ffd54a' : (st === '…' || st === 'стена' ? '#8a96ab' :
             (eraser ? ER_COLOR[r.hit.group] : (twins ? '#ffb3d6' : '#ffb3b3')));
-          ctx.fillText(st, LOG_X + COLS[5].x + 28, y);
+          ctx.textAlign = 'center';
+          ctx.fillText(st, LOG_X + 432, y);
+          ctx.textAlign = 'left';
         }
         ctx.restore();
       }
@@ -764,6 +1013,9 @@
       function draw(now) {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, W, H);
+        ctx.save();
+        ctx.translate(shiftX, 0);
+        if (beam) updateBeamScreen(now);
         // Painter's order: far to near
         drawFloor();
         drawScreen();
@@ -773,9 +1025,14 @@
         } else if (step >= opts.curveStep) {
           drawCurve(now);
         }
-        if (quantum) drawRipples(now);
+        if (beam) drawBeamRipples(now);
+        else if (quantum) drawRipples(now);
         else drawBullets(now, true);
         drawBarrier();
+        if (kind === 'bullets') {
+          drawWallMarks();
+          drawSparks(now);
+        }
         if (kind === 'which-path') drawWhichPathDetectors(now);
         if (twins) {
           drawCrystals(now);
@@ -783,10 +1040,12 @@
           if (eraser) drawEraserOptics(now);
           else drawTwinDetectors(now);
         }
-        if (quantum) drawPackets(now);
+        if (beam) drawBeamStream(now);
+        else if (quantum) drawPackets(now);
         else drawBullets(now, false);
-        drawGun();
-        drawLog(now);
+        drawGun(now);
+        ctx.restore();
+        if (!opts.noLog) drawLog(now);
       }
 
       // ---------- simulation ----------
@@ -800,6 +1059,10 @@
         recent = [];
         log = [];
         hits = [];
+        shots = 0;
+        wallCount = 0;
+        sparks = [];
+        wctx.clearRect(0, 0, WTW, WTH);
         tally['-1'] = tally['1'] = 0;
         erTally.L = erTally.R = erTally.D1 = erTally.D2 = 0;
       }
@@ -839,6 +1102,52 @@
         if (log.length > LOG_ROWS) log.length = LOG_ROWS;
       }
 
+      function logRow(now, hit, launchedAt, x, y, n) {
+        const tH = (now - t0) / 1000;
+        log.unshift({ n: n, tL: (launchedAt - t0) / 1000, tH: tH, x: x, y: y, hit: hit, born: now });
+        if (log.length > LOG_ROWS) log.length = LOG_ROWS;
+      }
+
+      // Machine gun: a bullet lands on the wall or on the screen
+      function landBullet(now, f) {
+        const h = f.hit;
+        if (h.wall) {
+          wallCount++;
+          const wx = (h.end.x / BAR_W + 0.5) * WTW, wy = (1 - h.end.y / BAR_H) * WTH;
+          wctx.fillStyle = 'rgba(25, 28, 35, 0.9)';
+          wctx.beginPath();
+          wctx.arc(wx, wy, 2.2, 0, Math.PI * 2);
+          wctx.fill();
+          wctx.fillStyle = 'rgba(200, 205, 215, 0.35)';
+          wctx.fillRect(wx - 2.5, wy - 3.2, 3, 1.2);
+          sparks.push({ x: h.end.x, y: h.end.y, born: now });
+          logRow(now, h, f.born, h.end.x * 10, h.end.y * 10, f.n);
+          return;
+        }
+        hits.push(h);
+        drawDot(h);
+        count++;
+        if (rate() < 5) recent.push({ tx: h.tx, ty: h.ty, born: now });
+        logRow(now, h, f.born, h.end.x * 10, h.end.y * 10, f.n);
+      }
+
+      function fireBullet(now) {
+        const yaw = gunYaw + (Math.random() * 2 - 1) * YAW_JITTER;
+        const h = bulletShot(yaw, PITCH_T0 + Math.random() * (PITCH_T1 - PITCH_T0));
+        const dist = Math.hypot(h.end.x - h.start.x, h.end.y - h.start.y, h.end.z - h.start.z);
+        const speed = rate() < 5 ? 13 : 24;
+        shots++;
+        flashT = now;
+        flights.push({ born: now, dur: dist / speed * 1000, hit: h, passed: false, n: shots });
+      }
+
+      // Triangle wave sweep of the gun, faster during a burst
+      function updateGun(dt) {
+        if (step >= 1 && count < opts.maxHits) gunPhase += dt * (rate() < 5 ? 0.12 : 0.55);
+        const t = gunPhase % 1;
+        gunYaw = YAW_AMP * (t < 0.5 ? 4 * t - 1 : 3 - 4 * t);
+      }
+
       // Instant hit without a visible flight (fast mode and prefill)
       function instantHit(now, flash, noDelay) {
         const hit = sampleHit(kind);
@@ -850,12 +1159,25 @@
 
       function prefill(total) {
         const now = performance.now();
+        if (kind === 'bullets') {
+          while (count < total) {
+            const yaw = (Math.random() * 2 - 1) * YAW_AMP;
+            const h = bulletShot(yaw, PITCH_T0 + Math.random() * (PITCH_T1 - PITCH_T0));
+            shots++;
+            const f = { born: now, hit: h, n: shots };
+            if (!h.wall) reveal(h, now);
+            landBullet(now, f);
+          }
+          sparks = [];
+          return;
+        }
+        if (beam) return;
         while (count < total) instantHit(now, false, true);
       }
 
       function inFlight() {
         let n = 0;
-        for (const f of flights) if (!f.landed) n++;
+        for (const f of flights) if (!f.landed && !(f.hit && f.hit.wall)) n++;
         return n;
       }
 
@@ -863,7 +1185,7 @@
         if (count + inFlight() >= opts.maxHits) return false;
         const r = rate();
         if (!quantum) {
-          flights.push({ born: now, dur: r < 5 ? 900 : 500, hit: sampleHit(kind), passed: false });
+          fireBullet(now);
           if (r < 5) Sfx.shot(0.6);
         } else if (r < 50) {
           flights.push({ born: now, dur: r < 5 ? 1300 : 600, hit: sampleHit(kind), passed: false });
@@ -874,6 +1196,7 @@
       }
 
       function update(dt, now) {
+        if (kind === 'bullets') updateGun(dt);
         acc += dt * rate();
         let spawned = 0;
         while (acc >= 1) {
@@ -890,16 +1213,18 @@
         const still = [];
         for (const f of flights) {
           // Reaching the slits: detectors fire, crystals split the photon, bullets pass a slit
-          if (!f.passed && now - f.born >= f.dur * (quantum ? SPLIT : 0.25)) {
+          const atWall = quantum ? SPLIT : (f.hit.wall ? 1 : (Z_BAR - f.hit.start.z) / (f.hit.end.z - f.hit.start.z));
+          if (!f.passed && now - f.born >= f.dur * atWall) {
             f.passed = true;
-            if (kind === 'which-path' || kind === 'bullets') reveal(f.hit, now);
+            if (kind === 'which-path' || (kind === 'bullets' && !f.hit.wall)) reveal(f.hit, now);
             if (twins) crystalT[f.hit.slit] = now;
           }
           // The partner reaches the screen
           if (!f.landed && now - f.born >= f.dur) {
             f.landed = true;
-            addHit(now, f.hit, rate() < 5, f.born);
-            if (!busy) Sfx.click(quantum ? 0.7 : 0.3);
+            if (kind === 'bullets') landBullet(now, f);
+            else addHit(now, f.hit, rate() < 5, f.born);
+            if (!busy) Sfx.click(quantum ? 0.7 : (f.hit.wall ? 0.45 : 0.3));
           }
           // The twin reaches its detector (later than the screen hit when delayed)
           const twinDone = !twins || now - f.born >= f.dur * (SPLIT + (1 - SPLIT) * TWIN_DELAY);
@@ -913,6 +1238,7 @@
           return false;
         });
         recent = recent.filter(function (r) { return now - r.born < 700; });
+        sparks = sparks.filter(function (sp) { return now - sp.born < 260; });
       }
 
       const loop = makeLoop(function (dt, now) {
@@ -925,6 +1251,8 @@
         const now = performance.now();
         if (s === 0) clearAll();
         if (step === 0 && s > 0) t0 = now;
+        if (beam && s >= 1 && step < 1) beamT0 = now;
+        if (beam && step === 0 && s >= 2) beamT0 = now - 1e5;
         // Entering mid-sequence (e.g. navigating back): show an accumulated pattern
         const fast = opts.rates[Math.min(s, opts.rates.length - 1)] >= 20 || (opts.prefillFrom && s >= opts.prefillFrom);
         if (step === 0 && s > 0 && fast) prefill(opts.maxHits);
@@ -945,21 +1273,35 @@
   Scenes.register('bullets', build({
     kind: 'bullets',
     captions: [
-      'Сначала обычный пулемёт: стреляем шариками по двум щелям',
-      'Каждый шарик пролетает через одну щель',
+      'Что будет, если стрелять частицами по стене с двумя щелями?',
+      'Почти все пули попадают в стену, но некоторые проскакивают в щель',
       'Очередь!',
-      'Ожидание: две полосы — напротив каждой щели'
+      'Результат: две полосы — напротив каждой щели'
     ],
-    rates: [0, 1.5, 120, 120],
+    rates: [0, 2.5, 520, 520],
     curveStep: 3,
     curve: 'bullets',
-    maxHits: 2500
+    maxHits: 1400
+  }));
+
+  Scenes.register('beam', build({
+    kind: 'beam',
+    captions: [
+      'Опыт как со светом, только вместо света — пучок электронов',
+      'Включаем пучок…',
+      '…и на экране полосы, как у волн! Интерференция'
+    ],
+    rates: [0, 0, 0],
+    curveStep: 2,
+    curve: 'fringes',
+    noLog: true,
+    maxHits: 0
   }));
 
   Scenes.register('electrons', build({
     kind: 'electrons',
     captions: [
-      'Теперь электроны. Тоже по одному',
+      'А если пускать электроны по одному?',
       'Один электрон — одна точка',
       'Пока похоже на случайный разброс…',
       'Из хаоса проступают полосы',
