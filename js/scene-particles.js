@@ -28,7 +28,7 @@
   const CAM = { x: -3.2, y: 9.5, z: -8 };
   const PITCH_TARGET = { y: 1.2, z: 11 };
   const FOCAL = 1250;
-  const FRAME_X = 690;             // screen center on the canvas (room for the log on the right)
+  const FRAME_X = 600;             // screen center on the canvas (room for the log on the right)
   let CX = W / 2;
   const CY = 385;
 
@@ -90,28 +90,30 @@
 
   // Twin detectors (left of the barrier, on the source side); the delayed scene moves them far away
   const TWIN_DET_NEAR = {
-    '-1': { x: -5.0, z: Z_BAR - 0.9 },
-    '1': { x: -6.4, z: Z_BAR - 3.2 }
+    '-1': { x: -4.6, z: Z_BAR - 0.9 },
+    '1': { x: -5.6, z: Z_BAR - 3.2 }
   };
   const TWIN_DET_FAR = {
-    '-1': { x: -7.8, z: Z_BAR - 0.5 },
-    '1': { x: -7.2, z: Z_BAR - 2.9 }
+    '-1': { x: -6.6, z: Z_BAR - 0.4 },
+    '1': { x: -6.4, z: Z_BAR - 2.8 }
   };
 
   // Eraser: each twin hits a 50/50 mirror; reflected -> its own 'path known' detector,
   // transmitted -> a joining mirror that mixes both paths into detectors 1 and 2
-  const ER_BS = { '-1': { x: -4.4, z: 5.4 }, '1': { x: -4.4, z: 3.5 } };
-  const ER_JOIN = { x: -6.2, z: 4.45 };
+  const ER_BS = { '-1': { x: -4.2, z: 5.4 }, '1': { x: -4.2, z: 3.5 } };
+  const ER_JOIN = { x: -5.6, z: 4.45 };
   const ER_DET = {
-    L: { x: -5.4, z: 6.4 },
-    R: { x: -5.4, z: 2.5 },
-    D1: { x: -7.6, z: 5.2 },
-    D2: { x: -7.6, z: 3.7 }
+    L: { x: -5.0, z: 6.5 },
+    R: { x: -5.0, z: 2.4 },
+    D1: { x: -6.7, z: 5.25 },
+    D2: { x: -6.7, z: 3.65 }
   };
-  const ER_COLOR = { L: '#c9d1de', R: '#c9d1de', D1: '#5aa9ff', D2: '#ff6b6b' };
+  // Path colors: left slit green, right slit red; erased paths blue (1) and yellow (2)
+  const SIDE_COLOR = { '-1': '#3ee07a', '1': '#ff4d4d' };
+  const ER_COLOR = { L: SIDE_COLOR['-1'], R: SIDE_COLOR['1'], D1: '#4f9dff', D2: '#ffd23f' };
   const ER_DOT = {
-    L: 'rgba(175, 182, 195, 0.85)', R: 'rgba(175, 182, 195, 0.85)',
-    D1: 'rgba(110, 175, 255, 0.95)', D2: 'rgba(255, 110, 110, 0.95)'
+    L: 'rgba(62, 224, 122, 0.85)', R: 'rgba(255, 77, 77, 0.85)',
+    D1: 'rgba(90, 160, 255, 0.95)', D2: 'rgba(255, 215, 70, 0.95)'
   };
   const ER_LABEL = { L: 'Л', R: 'П', D1: '1', D2: '2' };
 
@@ -240,7 +242,7 @@
     twins: { dot: 'rgba(255, 228, 160, 0.9)', glow: '#ffd166', noun: 'фотонов', slitHead: 'близнец' }
   };
   LOOK.delayed = LOOK.twins;
-  LOOK.eraser = Object.assign({}, LOOK.twins, { slitHead: 'детектор' });
+  LOOK.eraser = Object.assign({}, LOOK.twins, { slitHead: 'дет.' });
   const TWIN_COLOR = '#ff7ab6';
 
   // opts: { kind, captions, rates, curveStep, maxHits, lampsOffStep }
@@ -526,20 +528,28 @@
         ctx.restore();
       }
 
-      // Lamp on top of a detector box; flashes (red by default) for a moment after firing
-      function lamp(x, y, z, firedAt, now, on, color) {
+      // Lamp on top of a detector box: dim glass of its own color, flashes after firing;
+      // `steady` (0..1) keeps it lit, used to highlight a detector
+      function lamp(x, y, z, firedAt, now, on, color, steady) {
+        color = color || '#ff5a5a';
         const q = project(x, y, z);
         const r = 0.13 * q.s;
-        const a = on ? Math.max(0, 1 - (now - firedAt) / 350) : 0;
+        const a = on ? Math.max(steady || 0, 1 - (now - firedAt) / 350) : 0;
         ctx.save();
-        ctx.fillStyle = on ? '#4a2228' : '#262a33';
+        ctx.fillStyle = '#1c2027';
         ctx.beginPath();
         ctx.ellipse(q.x, q.y, r, r * 0.55, 0, 0, Math.PI * 2);
         ctx.fill();
+        if (on) {
+          ctx.globalAlpha = 0.3;
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
         if (a > 0) {
           ctx.globalAlpha = a;
-          ctx.fillStyle = color || '#ff5a5a';
-          ctx.shadowColor = color || '#ff3b3b';
+          ctx.fillStyle = color;
+          ctx.shadowColor = color;
           ctx.shadowBlur = 30;
           ctx.beginPath();
           ctx.ellipse(q.x, q.y, r * 1.2, r * 0.7, 0, 0, Math.PI * 2);
@@ -623,7 +633,7 @@
         [-1, 1].forEach(function (side) {
           const cx = side * SLIT_X;
           box(cx - 0.24, cx + 0.24, BAR_H, BAR_H + 0.38, Z_BAR - 0.3, Z_BAR + BAR_T, DET_COL);
-          lamp(cx, BAR_H + 0.38, Z_BAR - 0.06, lampT[side], now, on);
+          lamp(cx, BAR_H + 0.38, Z_BAR - 0.06, lampT[side], now, on, SIDE_COLOR[side]);
         });
       }
 
@@ -657,9 +667,9 @@
           const d = TWIN_DET[side];
           box(d.x - 0.08, d.x + 0.08, 0, BEAM_Y - 0.3, d.z - 0.08, d.z + 0.08, DET_COL);
           box(d.x - 0.3, d.x + 0.3, BEAM_Y - 0.3, BEAM_Y + 0.3, d.z - 0.3, d.z + 0.3, DET_COL);
-          lamp(d.x, BEAM_Y + 0.3, d.z, lampT[side], now, true);
+          lamp(d.x, BEAM_Y + 0.3, d.z, lampT[side], now, true, SIDE_COLOR[side]);
           const q = project(d.x, BEAM_Y + 0.85, d.z);
-          drawLabel(ctx, side < 0 ? 'Л' : 'П', q.x, q.y, 'center', '#ffb3d6');
+          drawLabel(ctx, side < 0 ? 'Л' : 'П', q.x, q.y, 'center', SIDE_COLOR[side]);
         });
       }
 
@@ -817,13 +827,44 @@
           'rgba(170, 220, 255, 0.35)', 'rgba(200, 235, 255, 0.85)');
       }
 
+      // Detectors whose hits are shown on the screen right now (sorting steps)
+      function erHighlighted(g) {
+        const known = g === 'L' || g === 'R';
+        if (step === 3) return true;
+        if (step === 4) return known;
+        if (step === 5) return g === 'D1';
+        if (step === 6) return g === 'D2';
+        if (step >= 7) return !known;
+        return false;
+      }
+
       function drawEraserDetector(g, now) {
         const d = ER_DET[g];
+        const hl = erHighlighted(g);
+        const sorting = step >= 3;
+        if (hl) {
+          // Halo on the floor around the highlighted detector
+          const pulse = 0.75 + 0.25 * Math.sin(now / 260);
+          const q0 = project(d.x, 0.02, d.z);
+          ctx.save();
+          ctx.globalAlpha = 0.55 * pulse;
+          ctx.strokeStyle = ER_COLOR[g];
+          ctx.lineWidth = 4;
+          ctx.shadowColor = ER_COLOR[g];
+          ctx.shadowBlur = 22;
+          ctx.beginPath();
+          ctx.ellipse(q0.x, q0.y, 0.62 * q0.s, 0.3 * q0.s, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+        ctx.save();
+        if (sorting && !hl) ctx.globalAlpha = 0.35;
         box(d.x - 0.08, d.x + 0.08, 0, BEAM_Y - 0.3, d.z - 0.08, d.z + 0.08, DET_COL);
         box(d.x - 0.3, d.x + 0.3, BEAM_Y - 0.3, BEAM_Y + 0.3, d.z - 0.3, d.z + 0.3, DET_COL);
-        lamp(d.x, BEAM_Y + 0.3, d.z, lampT[g] || -1e9, now, true, ER_COLOR[g]);
+        lamp(d.x, BEAM_Y + 0.3, d.z, lampT[g] || -1e9, now, true, ER_COLOR[g], hl ? 0.85 + 0.15 * Math.sin(now / 260) : 0);
         const q = project(d.x, BEAM_Y + 0.85, d.z);
         drawLabel(ctx, ER_LABEL[g], q.x, q.y, 'center', ER_COLOR[g]);
+        ctx.restore();
       }
 
       function drawEraserOptics(now) {
@@ -884,6 +925,16 @@
         return CURVES.twoBands(dx) * c * c;
       };
 
+      // Split of the two-band curve into the part from each slit
+      const leftBand = function (dx) {
+        const a = bandWP(dx, -1), b = bandWP(dx, 1);
+        return a + b > 0 ? CURVES.twoBands(dx) * a / (a + b) : 0;
+      };
+      const rightBand = function (dx) {
+        const a = bandWP(dx, -1), b = bandWP(dx, 1);
+        return a + b > 0 ? CURVES.twoBands(dx) * b / (a + b) : 0;
+      };
+
       function strokeCurve(fn, p, color, width) {
         curvePath(fn, p);
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
@@ -897,10 +948,13 @@
       function drawEraserCurves(now) {
         const p = Math.min(1, (now - curveT0) / 1500);
         ctx.save();
-        if (step === 4) strokeCurve(CURVES.twoBands, p, ER_COLOR.L, 4);
+        if (step === 4) {
+          strokeCurve(leftBand, p, ER_COLOR.L, 4);
+          strokeCurve(rightBand, p, ER_COLOR.R, 4);
+        }
         if (step === 5 || step >= 7) strokeCurve(blueFringe, p, ER_COLOR.D1, 4);
         if (step === 6 || step >= 7) strokeCurve(redFringe, p, ER_COLOR.D2, 4);
-        if (step >= 7) strokeCurve(CURVES.twoBands, p, 'rgba(255, 213, 74, 0.95)', 4);
+        if (step >= 7) strokeCurve(CURVES.twoBands, p, 'rgba(255, 255, 255, 0.95)', 4);
         ctx.restore();
       }
 
@@ -958,72 +1012,133 @@
         return row.hit.slit < 0 ? 'Л' : 'П';
       }
 
-      function drawLog(now) {
-        const hRows = LOG_ROWS * ROW_H;
-        ctx.save();
-        ctx.fillStyle = 'rgba(10, 14, 22, 0.92)';
-        ctx.strokeStyle = '#2a3242';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.roundRect(LOG_X, LOG_Y, LOG_W, 108 + hRows, 12);
-        ctx.fill();
-        ctx.stroke();
+      // Log card is drawn offscreen, then shown as a floating panel turned away from the viewer
+      const CARD_PAD = 12;
+      const CARD_W = LOG_W + 2 * CARD_PAD;
+      const CARD_H = 108 + LOG_ROWS * ROW_H + 2 * CARD_PAD;
+      const card = document.createElement('canvas');
+      card.width = CARD_W;
+      card.height = CARD_H;
+      const lc = card.getContext('2d');
 
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#e8eef8';
-        ctx.font = '600 26px "Segoe UI", Roboto, Arial, sans-serif';
-        ctx.fillText('Журнал', LOG_X + 14, LOG_Y + 26);
-        ctx.font = '500 21px "Segoe UI", Roboto, Arial, sans-serif';
-        ctx.textAlign = 'right';
-        ctx.fillStyle = '#cfe9da';
-        ctx.fillText(look.noun + ': ' + (kind === 'bullets' ? shots : count), LOG_X + LOG_W - 14, LOG_Y + 26);
-        ctx.textAlign = 'left';
-        if (kind === 'bullets') {
-          ctx.fillStyle = '#ffd27a';
-          ctx.fillText('в стену: ' + wallCount + '    через щель:  Л ' + tally['-1'] + '  П ' + tally['1'],
-            LOG_X + 14, LOG_Y + 56);
-        } else if (eraser) {
-          ctx.fillStyle = '#ffb3d6';
-          ctx.fillText('близнецы:  Л ' + erTally.L + '  П ' + erTally.R + '   1: ' + erTally.D1 + '  2: ' + erTally.D2,
-            LOG_X + 14, LOG_Y + 56);
+      // Text made of colored pieces: [[text, color], ...]
+      function pieces(list, x, y) {
+        list.forEach(function (pc) {
+          lc.fillStyle = pc[1];
+          lc.fillText(pc[0], x, y);
+          x += lc.measureText(pc[0]).width;
+        });
+      }
+
+      function renderCard(now) {
+        const X = CARD_PAD, Y = CARD_PAD;
+        const hRows = LOG_ROWS * ROW_H;
+        lc.clearRect(0, 0, CARD_W, CARD_H);
+        lc.save();
+        const bg = lc.createLinearGradient(0, Y, 0, Y + 108 + hRows);
+        bg.addColorStop(0, 'rgba(16, 24, 38, 0.94)');
+        bg.addColorStop(1, 'rgba(8, 12, 20, 0.94)');
+        lc.fillStyle = bg;
+        lc.strokeStyle = 'rgba(110, 190, 255, 0.55)';
+        lc.lineWidth = 2;
+        lc.beginPath();
+        lc.roundRect(X, Y, LOG_W, 108 + hRows, 12);
+        lc.fill();
+        lc.stroke();
+
+        lc.textBaseline = 'middle';
+        lc.fillStyle = '#e8eef8';
+        lc.font = '600 26px "Segoe UI", Roboto, Arial, sans-serif';
+        lc.fillText('Журнал', X + 14, Y + 26);
+        lc.font = '500 21px "Segoe UI", Roboto, Arial, sans-serif';
+        lc.textAlign = 'right';
+        lc.fillStyle = '#cfe9da';
+        lc.fillText(look.noun + ': ' + count, X + LOG_W - 14, Y + 26);
+        lc.textAlign = 'left';
+        const G = SIDE_COLOR['-1'], R = SIDE_COLOR['1'], T = '#c5cfdf';
+        if (eraser) {
+          pieces([['Л ' + erTally.L + '  ', G], ['П ' + erTally.R + '   ', R],
+            ['1: ' + erTally.D1 + '  ', ER_COLOR.D1], ['2: ' + erTally.D2, ER_COLOR.D2]], X + 14, Y + 56);
         } else if (kind !== 'electrons') {
-          ctx.fillStyle = twins ? '#ffb3d6' : '#ffb3b3';
-          const who = twins ? 'близнецы' : (kind === 'bullets' ? 'через щель' : 'датчики');
-          ctx.fillText(who + ':  Л ' + tally['-1'] + '   П ' + tally['1'], LOG_X + 14, LOG_Y + 56);
+          pieces([[(twins ? 'близнецы' : 'датчики') + ':  ', T], ['Л ' + tally['-1'] + '   ', G], ['П ' + tally['1'], R]],
+            X + 14, Y + 56);
         } else {
-          ctx.fillStyle = '#8a96ab';
-          ctx.fillText('через какую щель — неизвестно', LOG_X + 14, LOG_Y + 56);
+          lc.fillStyle = '#8a96ab';
+          lc.fillText('через какую щель — неизвестно', X + 14, Y + 56);
         }
 
-        const hy = LOG_Y + 88;
-        ctx.font = '600 17px "Segoe UI", Roboto, Arial, sans-serif';
-        ctx.fillStyle = '#8a96ab';
-        COLS.forEach(function (c) { ctx.fillText(c.head, LOG_X + c.x, hy); });
-        ctx.strokeStyle = '#2a3242';
-        ctx.beginPath();
-        ctx.moveTo(LOG_X + 10, hy + 14);
-        ctx.lineTo(LOG_X + LOG_W - 10, hy + 14);
-        ctx.stroke();
+        const hy = Y + 88;
+        lc.font = '600 17px "Segoe UI", Roboto, Arial, sans-serif';
+        lc.fillStyle = '#8a96ab';
+        COLS.forEach(function (c) { lc.fillText(c.head, X + c.x, hy); });
+        lc.strokeStyle = '#2a3242';
+        lc.beginPath();
+        lc.moveTo(X + 10, hy + 14);
+        lc.lineTo(X + LOG_W - 10, hy + 14);
+        lc.stroke();
 
-        ctx.font = '18px Consolas, Menlo, "DejaVu Sans Mono", monospace';
+        lc.font = '18px Consolas, Menlo, "DejaVu Sans Mono", monospace';
         for (let i = 0; i < log.length; i++) {
           const r = log[i];
           const y = hy + 14 + ROW_H * (i + 0.5);
           const fresh = Math.max(0, 1 - (now - r.born) / 600);
           if (fresh > 0) {
-            ctx.fillStyle = 'rgba(127, 255, 176,' + (0.18 * fresh).toFixed(3) + ')';
-            ctx.fillRect(LOG_X + 6, y - ROW_H / 2 + 2, LOG_W - 12, ROW_H - 4);
+            lc.fillStyle = 'rgba(127, 255, 176,' + (0.18 * fresh).toFixed(3) + ')';
+            lc.fillRect(X + 6, y - ROW_H / 2 + 2, LOG_W - 12, ROW_H - 4);
           }
-          ctx.fillStyle = i === 0 ? '#ffffff' : 'rgba(210, 220, 235,' + (1 - i / (LOG_ROWS + 4)).toFixed(3) + ')';
+          lc.fillStyle = i === 0 ? '#ffffff' : 'rgba(210, 220, 235,' + (1 - i / (LOG_ROWS + 4)).toFixed(3) + ')';
           const vals = [String(r.n), r.tL.toFixed(3), r.tH.toFixed(3), r.x.toFixed(1), r.y.toFixed(1)];
-          vals.forEach(function (v, k) { ctx.fillText(v, LOG_X + COLS[k].x, y); });
+          vals.forEach(function (v, k) { lc.fillText(v, X + COLS[k].x, y); });
           const st = slitText(r);
-          ctx.fillStyle = st === '?' ? '#ffd54a' : (st === '…' || st === 'стена' ? '#8a96ab' :
-            (eraser ? ER_COLOR[r.hit.group] : (twins ? '#ffb3d6' : '#ffb3b3')));
-          ctx.textAlign = 'center';
-          ctx.fillText(st, LOG_X + 432, y);
-          ctx.textAlign = 'left';
+          lc.fillStyle = st === '?' ? '#ffd54a' : (st === '…' ? '#8a96ab' :
+            (eraser ? ER_COLOR[r.hit.group] : SIDE_COLOR[r.hit.slit]));
+          lc.textAlign = 'center';
+          lc.font = '600 19px Consolas, Menlo, "DejaVu Sans Mono", monospace';
+          lc.fillText(st, X + 432, y);
+          lc.font = '18px Consolas, Menlo, "DejaVu Sans Mono", monospace';
+          lc.textAlign = 'left';
         }
+        lc.restore();
+      }
+
+      // Perspective of a card turned around its vertical axis: the right edge is farther away
+      const PANEL = { x: 1120, cy: 445, angle: 0.36, focal: 1700 };
+      function panelPoint(u) {
+        const lx = u * CARD_W;
+        const z = lx * Math.sin(PANEL.angle);
+        const k = PANEL.focal / (PANEL.focal + z);
+        return { x: PANEL.x + lx * Math.cos(PANEL.angle) * k, k: k };
+      }
+
+      function drawLog(now) {
+        renderCard(now);
+        const bob = Math.sin(now / 1700) * 5;
+        const cy = PANEL.cy + bob;
+        // Soft shadow on the floor below the floating card
+        const a = panelPoint(0), b = panelPoint(1);
+        ctx.save();
+        const sh = ctx.createRadialGradient((a.x + b.x) / 2, 860, 10, (a.x + b.x) / 2, 860, 230);
+        sh.addColorStop(0, 'rgba(70, 150, 255, 0.16)');
+        sh.addColorStop(1, 'rgba(70, 150, 255, 0)');
+        ctx.fillStyle = sh;
+        ctx.fillRect(a.x - 40, 760, b.x - a.x + 80, 200);
+        // The card, in thin vertical strips
+        const STRIP = 4;
+        for (let sx = 0; sx < CARD_W; sx += STRIP) {
+          const p0 = panelPoint(sx / CARD_W), p1 = panelPoint(Math.min(1, (sx + STRIP) / CARD_W));
+          const k = (p0.k + p1.k) / 2;
+          const h = CARD_H * k;
+          ctx.drawImage(card, sx, 0, STRIP, CARD_H, p0.x, cy - h / 2, p1.x - p0.x + 0.6, h);
+        }
+        // Glowing edge facing us
+        ctx.strokeStyle = 'rgba(120, 200, 255, 0.35)';
+        ctx.lineWidth = 3;
+        ctx.shadowColor = '#5ab8ff';
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.moveTo(a.x + CARD_PAD * a.k, cy - (CARD_H / 2 - CARD_PAD) * a.k);
+        ctx.lineTo(a.x + CARD_PAD * a.k, cy + (CARD_H / 2 - CARD_PAD) * a.k);
+        ctx.stroke();
         ctx.restore();
       }
 
@@ -1357,10 +1472,10 @@
       'Л и П — путь известен.  1 и 2 — путь стёрт',
       'На общем экране по-прежнему две полосы',
       'Раскрасим каждую точку по детектору её близнеца',
-      'Серые — путь известен: полос нет',
+      'Зелёные и красные — путь известен: полос нет',
       'Синие — путь стёрт (детектор 1): полосы!',
-      'Красные — детектор 2: тоже полосы, но сдвинутые',
-      'Синие + красные вместе — снова без полос'
+      'Жёлтые — детектор 2: тоже полосы, но сдвинутые',
+      'Синие + жёлтые вместе — снова без полос'
     ],
     rates: [0, 0.6, 700, 0, 0, 0, 0, 0],
     prefillFrom: 2,

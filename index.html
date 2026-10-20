@@ -6,12 +6,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;800;900&family=Exo+2:wght@300;400&display=swap">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <div id="stage">
   <div class="reveal">
     <div class="slides">
+
+      <!-- 0: title -->
+      <section data-scene="title">
+        <canvas width="1600" height="900"></canvas>
+        <aside class="notes">Заставка. Включить, пока гости рассаживаются.</aside>
+      </section>
 
       <!-- 1: classical expectation, machine gun -->
       <section data-scene="bullets">
@@ -22,27 +31,7 @@
         <aside class="notes">Вводная: что будет, если стрелять частицами по стене с двумя щелями? Клик 1 — одиночные выстрелы: пулемёт поворачивается, почти все пули в стену, иногда проскакивают. 2 — очередь. 3 — кривая: две полосы напротив щелей. Это наше ожидание для частиц. Дальше — что будет со светом.</aside>
       </section>
 
-      <!-- 2 -->
-      <section>
-        <div class="ph">
-          <div class="num">2</div>
-          <h2>Лазер и две щели</h2>
-          <p>Что будет на стене?</p>
-          <p class="todo">заглушка: сюда фото живых полос</p>
-        </div>
-        <aside class="notes">Опрос: что увидим? Обычно отвечают «две полосы». Включаем — много полос.</aside>
-      </section>
-
-      <!-- 3 -->
-      <section>
-        <div class="ph">
-          <div class="num">3</div>
-          <h2>Гребень + гребень = светло<br>Гребень + впадина = темно</h2>
-          <p class="todo">заглушка</p>
-        </div>
-      </section>
-
-      <!-- 4: waves from two slits -->
+      <!-- 2: waves from two slits -->
       <section data-scene="waves">
         <canvas width="1600" height="900"></canvas>
         <div class="caption"></div>
@@ -51,7 +40,7 @@
       </section>
 
 
-      <!-- 5: electron beam, like the light experiment -->
+      <!-- 3: electron beam, like the light experiment -->
       <section data-scene="beam">
         <canvas width="1600" height="900"></canvas>
         <div class="caption"></div>
@@ -59,7 +48,7 @@
         <aside class="notes">Сначала учёные просто повторили опыт со светом, но пустили пучок электронов. Спросить: что ждём? Электроны — частицы, значит две полосы, как у пулемёта. Клик 1 — включаем пучок, на экране проступает картина. 2 — кривая: интерференция, как у волн. Но, может, электроны в пучке просто толкаются друг с другом? Проверим — по одному.</aside>
       </section>
 
-      <!-- 6: electrons one by one -->
+      <!-- 4: electrons one by one -->
       <section data-scene="electrons">
         <canvas width="1600" height="900"></canvas>
         <div class="caption"></div>
@@ -68,7 +57,7 @@
         <aside class="notes">Клик 1 — по одному со щелчком. 2 — быстрее. 3 — тысячи, проступают полосы. 4 — кривая интерференции.</aside>
       </section>
 
-      <!-- 7: which-path detectors -->
+      <!-- 5: which-path detectors -->
       <section data-scene="which-path">
         <canvas width="1600" height="900"></canvas>
         <div class="caption"></div>
@@ -77,7 +66,7 @@
         <aside class="notes">Клик 1 — электроны по одному, загорается лампочка у одной щели. 2 — тысячи, видно две полосы. 3 — кривая: две полосы, пунктиром — интерференция, которая была без датчиков. 4 — лампочки выключены, никто не смотрит, датчики только пишут в журнал — полос всё равно нет. Важна сама информация о пути, а не взгляд человека.</aside>
       </section>
 
-      <!-- 8: entangled twin photons -->
+      <!-- 6: entangled twin photons -->
       <section data-scene="twins">
         <canvas width="1600" height="900"></canvas>
         <div class="caption"></div>
@@ -86,7 +75,7 @@
         <aside class="notes">У каждой щели кристалл, который превращает фотон в пару запутанных близнецов. Клик 1 — по одному: один близнец на экран, второй в детектор Л или П. 2 — тысячи, в журнале у каждого фотона известна щель. 3 — кривая: две полосы, как с датчиками; пунктиром — интерференция, которой нет. Датчик у щели уже не нужен: информацию о пути несёт близнец.</aside>
       </section>
 
-      <!-- 9: delayed choice, the twin is detected after its partner hits the screen -->
+      <!-- 7: delayed choice, the twin is detected after its partner hits the screen -->
       <section data-scene="delayed">
         <canvas width="1600" height="900"></canvas>
         <div class="caption"></div>
@@ -95,7 +84,7 @@
         <aside class="notes">Детекторы близнецов далеко: близнец летит дольше и попадает в детектор уже после того, как его пара отметилась на экране. Клик 1 — по одному: точка на экране, в журнале «…», потом загорается Л или П. 2 — тысячи. 3 — кривая: всё равно две полосы. Экран как будто «знает» заранее, что путь будет известен. Отсюда вопрос: а если путь потом стереть? → ластик.</aside>
       </section>
 
-      <!-- 10: quantum eraser -->
+      <!-- 8: quantum eraser -->
       <section data-scene="eraser">
         <canvas width="1600" height="900"></canvas>
         <div class="caption"></div>
@@ -103,15 +92,15 @@
         <span class="fragment step"></span><span class="fragment step"></span>
         <span class="fragment step"></span><span class="fragment step"></span>
         <span class="fragment step"></span>
-        <aside class="notes">Близнец идёт на полупрозрачное зеркало: отражается — в свой детектор Л или П (путь известен); проходит — попадает на второе зеркало, где пути смешиваются, и в детектор 1 или 2 (путь стёрт, уже не узнать, какая щель). Клик 1 — по одному, в журнале «…», потом детектор. 2 — тысячи: на экране две полосы, чуда нет. 3 — раскрашиваем по детектору близнеца. 4 — только серые: полос нет. 5 — только синие: полосы! 6 — только красные: полосы, сдвинутые. 7 — синие + красные вместе: полосы гасят друг друга, снова две полосы. Главное: на общем экране полосы не видны никогда, только после сортировки по журналу близнецов.</aside>
+        <aside class="notes">Близнец идёт на полупрозрачное зеркало: отражается — в свой детектор Л или П (путь известен); проходит — попадает на второе зеркало, где пути смешиваются, и в детектор 1 или 2 (путь стёрт, уже не узнать, какая щель). Клик 1 — по одному, в журнале «…», потом детектор. 2 — тысячи: на экране две полосы, чуда нет. 3 — раскрашиваем по детектору близнеца. 4 — только зелёные и красные (путь известен): полос нет. 5 — только синие: полосы! 6 — только жёлтые: полосы, сдвинутые. 7 — синие + жёлтые вместе: полосы гасят друг друга, снова две полосы. Главное: на общем экране полосы не видны никогда, только после сортировки по журналу близнецов.</aside>
       </section>
 
-      <!-- 11 -->
-      <section><div class="ph"><div class="num">11</div><h2>Честный момент</h2>
+      <!-- 9 -->
+      <section><div class="ph"><div class="num">9</div><h2>Честный момент</h2>
         <p>Сигнал в прошлое послать нельзя</p><p class="todo">заглушка</p></div></section>
 
-      <!-- 12 -->
-      <section><div class="ph"><div class="num">12</div><h2>Пока нет следа о пути — частица ведёт себя как волна</h2>
+      <!-- 10 -->
+      <section><div class="ph"><div class="num">10</div><h2>Пока нет следа о пути — частица ведёт себя как волна</h2>
         <p class="todo">заглушка: цитата Фейнмана + фото живых полос</p></div></section>
 
     </div>
@@ -122,6 +111,7 @@
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/registry.js"></script>
+<script src="js/scene-title.js"></script>
 <script src="js/scene-waves.js"></script>
 <script src="js/scene-particles.js"></script>
 <script src="js/main.js"></script>
