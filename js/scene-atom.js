@@ -1,40 +1,36 @@
-/* Atom scene: planetary picture of an atom, but the electron changes orbits by quantum jumps,
-   emitting or absorbing a photon whose color matches the energy gap. Energy ladder on the right. */
+/* Atom scene: a calm background while the presenter talks about the electron as a real particle.
+   A nucleus inside faint spherical shells; the electron glides over its shell in 3D (the orbit
+   plane slowly turns, so it covers the whole sphere) and now and then jumps to another shell. */
 (function () {
   'use strict';
 
   const W = 1600, H = 900, TAU = Math.PI * 2;
-  const CX = 640, CY = 470;
-  const TILT = -0.26;                      // orbit plane tilt on screen
-  const R = [0, 130, 235, 345];            // orbit radii for n = 1..3
-  const FLAT = 0.36;                       // vertical squash of the orbit ellipses
-  const E = [0, -13.6, -3.4, -1.51];       // hydrogen-like energies, eV
-  // Photon colors by transition (upper, lower): Balmer-alpha red, Lyman lines ultraviolet (shown violet)
-  const PHOTON = { '3-2': '#ff4a4a', '2-1': '#9b6bff', '3-1': '#7d5cff' };
+  const CX = 800, CY = 450;
+  const SHELL = [0, 150, 245, 340];   // shell radii, px
+  const FOCAL = 1400;                 // perspective for the 3D sphere
 
   Scenes.register('atom', function (canvas) {
     const ctx = canvas.getContext('2d');
 
-    // Static background
     const bg = document.createElement('canvas');
     bg.width = W;
     bg.height = H;
     (function () {
       const g = bg.getContext('2d');
-      const r = g.createRadialGradient(CX, CY, 40, CX, CY, 900);
+      const r = g.createRadialGradient(CX, CY, 40, CX, CY, 950);
       r.addColorStop(0, '#0d1838');
       r.addColorStop(0.6, '#050a1a');
       r.addColorStop(1, '#010205');
       g.fillStyle = r;
       g.fillRect(0, 0, W, H);
-      for (let i = 0; i < 220; i++) {
+      for (let i = 0; i < 240; i++) {
         g.fillStyle = 'rgba(210, 225, 255,' + (0.15 + Math.random() * 0.5).toFixed(2) + ')';
         const s = Math.random() * 1.5 + 0.3;
         g.fillRect(Math.random() * W, Math.random() * H, s, s);
       }
     })();
 
-    // Nucleus: protons and neutrons packed in a ball
+    // Nucleus: protons (red) and neutrons (grey)
     const nucleons = [];
     for (let i = 0; i < 14; i++) {
       const phi = Math.acos(1 - 2 * (i + 0.5) / 14), th = i * 2.399963;
@@ -42,9 +38,9 @@
       nucleons.push({ x: Math.sin(phi) * Math.cos(th) * rr, y: Math.cos(phi) * rr, z: Math.sin(phi) * Math.sin(th) * rr, p: i % 2 === 0 });
     }
 
-    function orbitPoint(n, a) {
-      const x = Math.cos(a) * R[n], y = Math.sin(a) * R[n] * FLAT;
-      return { x: CX + x * Math.cos(TILT) - y * Math.sin(TILT), y: CY + x * Math.sin(TILT) + y * Math.cos(TILT), front: Math.sin(a) > 0 };
+    function proj(x, y, z) {
+      const k = FOCAL / (FOCAL + z);
+      return { x: CX + x * k, y: CY + y * k, k: k, z: z };
     }
 
     function glow(x, y, r, color, a) {
@@ -69,192 +65,125 @@
       ctx.fill();
     }
 
-    function label(t, x, y, size, color) {
+    // Faint wireframe shell: a few latitude and longitude circles, slowly rotating
+    function drawShell(R, active, t, front) {
+      const rot = t * 0.08;
       ctx.save();
-      ctx.font = 'italic 600 ' + size + 'px Georgia, "Times New Roman", serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.lineWidth = 5;
-      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-      ctx.strokeText(t, x, y);
-      ctx.fillStyle = color;
-      ctx.fillText(t, x, y);
-      ctx.restore();
-    }
-
-    function drawOrbits(highlight) {
-      for (let n = 1; n <= 3; n++) {
-        ctx.save();
-        ctx.translate(CX, CY);
-        ctx.rotate(TILT);
-        ctx.strokeStyle = n === highlight ? 'rgba(130, 210, 255, 0.85)' : 'rgba(110, 170, 255, 0.32)';
-        ctx.lineWidth = n === highlight ? 3 : 2;
-        ctx.shadowColor = '#4fb4ff';
-        ctx.shadowBlur = n === highlight ? 16 : 6;
-        ctx.setLineDash(n === highlight ? [] : [10, 9]);
+      ctx.lineWidth = active ? 1.8 : 1.1;
+      const base = active ? 0.42 : 0.14;
+      const lines = [];
+      for (let k = -2; k <= 2; k++) lines.push({ lat: k * 0.5 });
+      for (let k = 0; k < 6; k++) lines.push({ lon: k * Math.PI / 6 });
+      lines.forEach(function (ln) {
         ctx.beginPath();
-        ctx.ellipse(0, 0, R[n], R[n] * FLAT, 0, 0, TAU);
+        let started = false;
+        for (let i = 0; i <= 72; i++) {
+          const a = i / 72 * TAU;
+          let x, y, z;
+          if (ln.lat !== undefined) {
+            const c = Math.cos(ln.lat), s = Math.sin(ln.lat);
+            x = Math.cos(a) * c; y = s; z = Math.sin(a) * c;
+          } else {
+            x = Math.cos(a) * Math.cos(ln.lon); y = Math.sin(a); z = Math.cos(a) * Math.sin(ln.lon);
+          }
+          // rotate around y, tilt toward the viewer
+          const xr = x * Math.cos(rot) + z * Math.sin(rot), zr = -x * Math.sin(rot) + z * Math.cos(rot);
+          const yt = y * Math.cos(0.35) - zr * Math.sin(0.35), zt = y * Math.sin(0.35) + zr * Math.cos(0.35);
+          if ((zt < 0) !== front) { started = false; continue; }
+          const p = proj(xr * R, yt * R, zt * R);
+          if (!started) { ctx.moveTo(p.x, p.y); started = true; } else ctx.lineTo(p.x, p.y);
+        }
+        ctx.strokeStyle = 'rgba(120, 190, 255,' + (front ? base : base * 0.45).toFixed(3) + ')';
         ctx.stroke();
-        ctx.restore();
-        const p = orbitPoint(n, -0.15);
-        label('n=' + n, p.x + 34, p.y - 6, 22, 'rgba(170, 215, 255, 0.9)');
-      }
+      });
+      ctx.restore();
     }
 
     function drawNucleus(t) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      glow(CX, CY, 90, '255, 120, 90', 0.25);
+      glow(CX, CY, 110, '255, 120, 90', 0.22);
       ctx.restore();
       const a = t * 0.4, ca = Math.cos(a), sa = Math.sin(a);
       const pts = nucleons.map(function (n) {
         return { x: n.x * ca + n.z * sa, y: n.y, z: -n.x * sa + n.z * ca, p: n.p };
       });
-      pts.sort(function (u, v) { return u.z - v.z; });
+      pts.sort(function (u, v) { return v.z - u.z; });
       pts.forEach(function (n) {
-        const x = CX + n.x * 24, y = CY + n.y * 24, r = 15 + n.z * 2;
+        const x = CX + n.x * 26, y = CY + n.y * 26, r = 16 - n.z * 2;
         if (n.p) sphere(x, y, r, '#ff9a8a', '#a3201c');
         else sphere(x, y, r, '#c8d4e8', '#3e4a63');
       });
     }
 
-    // ---------- electron state and quantum jumps ----------
-    let n = 2, ang = 0, nextJump = 2.5, t = 0;
-    let flash = null;        // { from, to, t0 } brief flashes at the old and new positions
-    let photons = [];        // { x, y, dx, dy, t0, color, emit }
-    let pendingUp = null;    // absorption: jump after the incoming photon arrives
+    // ---------- electron on a sphere ----------
+    let shell = 2, t = 0, nextJump = 6;
+    let flash = null;
+    const trail = [];
 
-    function speed(level) { return 1.6 / level; }
-
-    function jump(to) {
-      const from = n;
-      const pOld = orbitPoint(from, ang);
-      n = to;
-      const pNew = orbitPoint(n, ang);
-      flash = { a: pOld, b: pNew, t0: t };
-      if (to < from) {
-        // Emission: a photon leaves outward
-        const dx = pNew.x - CX, dy = pNew.y - CY, l = Math.hypot(dx, dy) || 1;
-        photons.push({ x: pNew.x, y: pNew.y, dx: dx / l, dy: dy / l, t0: t, color: PHOTON[from + '-' + to], emit: true });
-      }
+    // Position on the current shell: an orbit whose plane precesses, sweeping the whole sphere
+    function electronPos(tt, R) {
+      const w = 1.1, prec = 0.23;
+      const a = tt * w;
+      let x = Math.cos(a), y = 0, z = Math.sin(a);
+      const inc = 1.1;   // orbit inclination
+      const y1 = y * Math.cos(inc) - z * Math.sin(inc), z1 = y * Math.sin(inc) + z * Math.cos(inc);
+      const p = tt * prec;
+      const x2 = x * Math.cos(p) + z1 * Math.sin(p), z2 = -x * Math.sin(p) + z1 * Math.cos(p);
+      return proj(x2 * R, y1 * R, z2 * R);
     }
 
-    function scheduleJump() {
-      const options = [1, 2, 3].filter(function (k) { return k !== n; });
-      const to = options[Math.floor(Math.random() * options.length)];
-      if (to > n) {
-        // Absorption: a photon comes from outside, then the electron jumps up
-        const target = orbitPoint(n, ang + speed(n) * 0.9);
-        const dx = target.x - CX, dy = target.y - CY, l = Math.hypot(dx, dy) || 1;
-        const d = 520;
-        photons.push({ x: target.x + dx / l * d, y: target.y + dy / l * d, dx: -dx / l, dy: -dy / l, t0: t,
-          color: PHOTON[to + '-' + n], emit: false, life: 0.9 });
-        pendingUp = { to: to, at: t + 0.9 };
-      } else {
-        jump(to);
-      }
-      nextJump = t + 2.6 + Math.random() * 1.6;
-    }
-
-    function drawPhotons() {
-      photons = photons.filter(function (ph) { return t - ph.t0 < (ph.life || 1.6); });
-      photons.forEach(function (ph) {
-        const age = t - ph.t0;
-        const dist = ph.emit ? age * 420 : age * (520 / 0.9);
-        const hx = ph.x + ph.dx * dist, hy = ph.y + ph.dy * dist;
-        const len = 120;
-        const nx = -ph.dy, ny = ph.dx;
-        ctx.save();
-        ctx.strokeStyle = ph.color;
-        ctx.lineWidth = 3;
-        ctx.shadowColor = ph.color;
-        ctx.shadowBlur = 16;
-        ctx.globalAlpha = ph.emit ? Math.max(0, 1 - age / 1.6) : 1;
-        ctx.beginPath();
-        for (let i = 0; i <= 60; i++) {
-          const u = i / 60;
-          const s = dist - len * (1 - u);
-          if (s < 0) continue;
-          const w = Math.sin(u * Math.PI) * 12 * Math.sin(u * 9 * Math.PI - age * 30);
-          const x = ph.x + ph.dx * s + nx * w, y = ph.y + ph.dy * s + ny * w;
-          if (i === 0 || s - 2 < 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-        ctx.restore();
-        label('γ', hx + nx * 28, hy + ny * 28, 28, ph.color);
-      });
-    }
-
-    function drawElectron(front) {
-      const p = orbitPoint(n, ang);
-      if (p.front !== front) return;
+    function drawElectron(behind) {
+      const p = electronPos(t, SHELL[shell]);
+      if ((p.z > 0) !== behind) return;
+      // trail
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      glow(p.x, p.y, 46, '90, 220, 255', 0.5);
+      trail.forEach(function (q, i) {
+        if ((q.z > 0) !== behind) return;
+        glow(q.x, q.y, 10 * q.k, '90, 220, 255', 0.25 * (i / trail.length));
+      });
+      glow(p.x, p.y, 48 * p.k, '90, 220, 255', 0.5);
       ctx.restore();
-      sphere(p.x, p.y, 11, '#eaffff', '#1aa4d8');
-      label('e⁻', p.x + 26, p.y - 24, 24, '#bfefff');
+      sphere(p.x, p.y, 11 * p.k, '#eaffff', '#1aa4d8');
     }
 
     function drawFlash() {
       if (!flash) return;
-      const a = 1 - (t - flash.t0) / 0.45;
+      const a = 1 - (t - flash.t0) / 0.5;
       if (a <= 0) { flash = null; return; }
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      glow(flash.a.x, flash.a.y, 70 * (1.4 - a), '150, 230, 255', 0.8 * a);
-      glow(flash.b.x, flash.b.y, 70 * (1.4 - a), '220, 250, 255', 0.9 * a);
+      glow(flash.a.x, flash.a.y, 80 * (1.4 - a), '150, 230, 255', 0.8 * a);
+      glow(flash.b.x, flash.b.y, 80 * (1.4 - a), '220, 250, 255', 0.9 * a);
       ctx.restore();
-    }
-
-    // Energy ladder: the allowed levels only, nothing in between
-    function drawLadder() {
-      const x0 = 1180, x1 = 1480, yTop = 170, yBot = 760;
-      const ys = [0, yBot, yTop + (yBot - yTop) * (E[2] / E[1]), yTop + (yBot - yTop) * (E[3] / E[1])];
-      ctx.save();
-      ctx.strokeStyle = 'rgba(160, 200, 255, 0.35)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(x0 - 30, yTop - 40);
-      ctx.lineTo(x0 - 30, yBot + 20);
-      ctx.stroke();
-      label('E', x0 - 30, yTop - 62, 28, 'rgba(190, 220, 255, 0.9)');
-      for (let k = 1; k <= 3; k++) {
-        ctx.strokeStyle = k === n ? 'rgba(140, 220, 255, 1)' : 'rgba(140, 190, 255, 0.5)';
-        ctx.lineWidth = k === n ? 4 : 3;
-        ctx.shadowColor = '#4fb4ff';
-        ctx.shadowBlur = k === n ? 14 : 0;
-        ctx.beginPath();
-        ctx.moveTo(x0, ys[k]);
-        ctx.lineTo(x1, ys[k]);
-        ctx.stroke();
-        label('n=' + k, x1 + 44, ys[k], 22, 'rgba(170, 215, 255, 0.9)');
-      }
-      ctx.restore();
-      const xe = x0 + (x1 - x0) / 2;
-      sphere(xe, ys[n] - 14, 10, '#eaffff', '#1aa4d8');
     }
 
     function draw() {
       ctx.drawImage(bg, 0, 0);
-      drawOrbits(n);
-      drawElectron(false);
-      drawNucleus(t);
+      for (let k = 3; k >= 1; k--) drawShell(SHELL[k], k === shell, t, false);
       drawElectron(true);
+      drawNucleus(t);
+      for (let k = 1; k <= 3; k++) drawShell(SHELL[k], k === shell, t, true);
+      drawElectron(false);
       drawFlash();
-      drawPhotons();
-      drawLadder();
     }
 
     const loop = makeLoop(function (dt) {
       t += dt;
-      ang += dt * speed(n);
-      if (pendingUp && t >= pendingUp.at) {
-        jump(pendingUp.to);
-        pendingUp = null;
-      } else if (!pendingUp && t >= nextJump) {
-        scheduleJump();
+      const p = electronPos(t, SHELL[shell]);
+      trail.push(p);
+      if (trail.length > 14) trail.shift();
+      if (t >= nextJump) {
+        // Quantum jump: the electron is suddenly on another shell, no path in between
+        const options = [1, 2, 3].filter(function (k) { return k !== shell; });
+        const to = options[Math.floor(Math.random() * options.length)];
+        const a = electronPos(t, SHELL[shell]);
+        shell = to;
+        const b = electronPos(t, SHELL[shell]);
+        flash = { a: a, b: b, t0: t };
+        trail.length = 0;
+        nextJump = t + 5 + Math.random() * 4;
       }
       draw();
     });

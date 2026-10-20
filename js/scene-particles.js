@@ -302,8 +302,16 @@
       const wctx = wallTex.getContext('2d');
 
 
+      let rampT0 = 0;    // start of the first click, for scenes whose rate ramps up
       function rate() {
-        return opts.rates[Math.min(step, opts.rates.length - 1)];
+        const r = opts.rates[Math.min(step, opts.rates.length - 1)];
+        if (opts.ramp && step === 1) {
+          // Long slow start so the chaos can be watched, then the stream thickens
+          const tt = (performance.now() - rampT0) / 1000;
+          const k = Math.max(0, Math.min(1, (tt - opts.ramp.hold) / opts.ramp.grow));
+          return opts.ramp.from + (r - opts.ramp.from) * k * k;
+        }
+        return r;
       }
 
       // ---------- drawing helpers ----------
@@ -505,31 +513,14 @@
         side: 'rgba(90, 180, 220, 0.3)', edge: 'rgba(160, 230, 255, 0.7)'
       };
 
-      // ---------- backdrop: a dim server-room aisle with a lit floor ----------
-      // Static parts are rendered once into a cache; only rack LEDs are animated.
+      // ---------- backdrop: a dim room with a lit floor grid and light strips ----------
+      // Rendered once into a cache.
       const RACK_ROWS = [
         { x0: -13.2, x1: -11.8 },   // left row, aisle face at x1
         { x0: 10.6, x1: 12.0 }      // right row, aisle face at x0
       ];
       const RACK_Z0 = -2, RACK_LEN = 1.3, RACK_N = 15, RACK_H = 5.2;
-      const RACK_COL = { front: '#0b1018', top: '#141b27', side: '#0e1520', edge: 'rgba(60, 90, 130, 0.35)' };
-      const leds = [];
-      for (let r = 0; r < RACK_ROWS.length; r++) {
-        const row = RACK_ROWS[r];
-        const fx = r === 0 ? row.x1 + 0.01 : row.x0 - 0.01;
-        for (let k = 0; k < RACK_N; k++) {
-          const z0 = RACK_Z0 + k * RACK_LEN;
-          for (let u = 0; u < 14; u++) {
-            if (Math.random() < 0.35) continue;
-            leds.push({
-              x: fx, y: 0.5 + u * 0.32, z: z0 + 0.2 + Math.random() * (RACK_LEN - 0.4),
-              c: Math.random() < 0.7 ? '90, 200, 255' : (Math.random() < 0.6 ? '80, 255, 160' : '255, 180, 70'),
-              f: 0.3 + Math.random() * 2.5, ph: Math.random() * 6.28
-            });
-          }
-        }
-      }
-
+      
       function floorPool(x, z, rx, color, a) {
         const q = project(x, 0, z);
         const r = rx * q.s;
@@ -588,20 +579,7 @@
           ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
         }
         ctx.restore();
-        // Rack rows, far to near
-        for (let k = RACK_N - 1; k >= 0; k--) {
-          const z0 = RACK_Z0 + k * RACK_LEN;
-          RACK_ROWS.forEach(function (row) {
-            box(row.x0, row.x1, 0, RACK_H, z0 + 0.04, z0 + RACK_LEN - 0.04, RACK_COL);
-          });
-        }
-        // Dim LED sockets
-        for (const l of leds) {
-          const q = project(l.x, l.y, l.z);
-          ctx.fillStyle = 'rgba(' + l.c + ', 0.12)';
-          ctx.fillRect(q.x - 1, q.y - 1, 2.5, 2.5);
-        }
-        // Light strip along the floor at the foot of each rack row
+        // Light strips along the floor at the sides of the room
         RACK_ROWS.forEach(function (row, r) {
           const fx = r === 0 ? row.x1 + 0.05 : row.x0 - 0.05;
           const a = project(fx, 0.02, RACK_Z0), b = project(fx, 0.02, RACK_Z0 + RACK_N * RACK_LEN);
@@ -635,17 +613,6 @@
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.drawImage(envCache, 0, 0);
-        ctx.restore();
-        // Blinking rack LEDs
-        const t = now / 1000;
-        ctx.save();
-        for (const l of leds) {
-          const v = Math.sin(t * l.f + l.ph);
-          if (v < 0.35) continue;
-          const q = project(l.x, l.y, l.z);
-          ctx.fillStyle = 'rgba(' + l.c + ',' + (0.35 + 0.65 * v).toFixed(2) + ')';
-          ctx.fillRect(q.x - 1.2, q.y - 1.2, 3, 3);
-        }
         ctx.restore();
       }
 
@@ -942,19 +909,21 @@
 
       // Detectors whose hits are shown on the screen right now (sorting steps)
       // Sorting steps: 3 both pairs by pair color, 4 front pair, 5 front pair split,
-      // 6 back pair, 7 back pair split, 8 everything in full color
+      // 6 only detector 1, 7 only detector 2, 8 detectors 1 and 2 together
       const PAIR_COLOR = { front: '#f4f6fa', back: '#a77bff' };
       const PAIR_DOT = { front: 'rgba(244, 246, 250, 0.9)', back: 'rgba(167, 123, 255, 0.95)' };
       function isFront(g) { return g === 'L' || g === 'R'; }
       function erHighlighted(g) {
-        if (step === 3 || step >= 8) return true;
+        if (step === 3) return true;
         if (step === 4 || step === 5) return isFront(g);
-        if (step === 6 || step === 7) return !isFront(g);
+        if (step === 6) return g === 'D1';
+        if (step === 7) return g === 'D2';
+        if (step >= 8) return !isFront(g);
         return false;
       }
       // Color a detector (and its dots) is shown in at the current step
       function erColor(g) {
-        if (step === 3 || step === 4 || step === 6) return PAIR_COLOR[isFront(g) ? 'front' : 'back'];
+        if (step === 3 || step === 4) return PAIR_COLOR[isFront(g) ? 'front' : 'back'];
         return ER_COLOR[g];
       }
 
@@ -1019,9 +988,9 @@
         if (step === 3) return pairDot;
         if (step === 4) return front ? pairDot : null;
         if (step === 5) return front ? ER_DOT[g] : null;
-        if (step === 6) return front ? null : pairDot;
-        if (step === 7) return front ? null : ER_DOT[g];
-        return ER_DOT[g];
+        if (step === 6) return g === 'D1' ? ER_DOT[g] : null;
+        if (step === 7) return g === 'D2' ? ER_DOT[g] : null;
+        return front ? null : ER_DOT[g];
       }
 
       function drawDot(hit) {
@@ -1072,15 +1041,13 @@
         const p = Math.min(1, (now - curveT0) / 1500);
         ctx.save();
         if (step === 4) strokeCurve(CURVES.twoBands, p, PAIR_COLOR.front, 4);
-        if (step === 6) strokeCurve(CURVES.twoBands, p, PAIR_COLOR.back, 4);
-        if (step === 5 || step >= 8) {
-          strokeCurve(leftBand, p, ER_COLOR.L, step >= 8 ? 3 : 4);
-          strokeCurve(rightBand, p, ER_COLOR.R, step >= 8 ? 3 : 4);
+        if (step === 5) {
+          strokeCurve(leftBand, p, ER_COLOR.L, 4);
+          strokeCurve(rightBand, p, ER_COLOR.R, 4);
         }
-        if (step === 7 || step >= 8) {
-          strokeCurve(blueFringe, p, ER_COLOR.D1, step >= 8 ? 3 : 4);
-          strokeCurve(redFringe, p, ER_COLOR.D2, step >= 8 ? 3 : 4);
-        }
+        if (step === 6 || step >= 8) strokeCurve(blueFringe, p, ER_COLOR.D1, 4);
+        if (step === 7 || step >= 8) strokeCurve(redFringe, p, ER_COLOR.D2, 4);
+        if (step >= 8) strokeCurve(CURVES.twoBands, p, 'rgba(255, 255, 255, 0.95)', 3);
         ctx.restore();
       }
 
@@ -1545,6 +1512,7 @@
         const now = performance.now();
         if (s === 0) clearAll();
         if (step === 0 && s > 0) t0 = now;
+        if (s === 1 && step !== 1) rampT0 = now;
         // Entering mid-sequence (e.g. navigating back): show an accumulated pattern
         const fast = opts.prefillFrom ? s >= opts.prefillFrom : opts.rates[Math.min(s, opts.rates.length - 1)] >= 20;
         if (step === 0 && s > 0 && fast) prefill(opts.maxHits);
@@ -1588,6 +1556,7 @@
       '…и на экране полосы, как у волн! Интерференция'
     ],
     rates: [0, 900, 900],
+    ramp: { from: 30, hold: 12, grow: 22 },
     prefillFrom: 2,
     curveStep: 2,
     curve: 'fringes',
@@ -1637,9 +1606,9 @@
       'Разделим точки по парам детекторов: передняя пара — белые, задняя — фиолетовые',
       'Только передняя пара: две полосы',
       'Раскрасим её: зелёная полоса от левой щели, красная от правой',
-      'Только задняя пара: тоже две полосы',
-      'Раскрасим её: полосы! Синие и жёлтые сдвинуты на полшага',
-      'Все цвета вместе'
+      'Только детектор 1: полосы!',
+      'Только детектор 2: тоже полосы, но сдвинутые на полшага',
+      'Детекторы 1 и 2 вместе: полосы маскируют друг друга'
     ],
     rates: [0, 0.6, 700, 0, 0, 0, 0, 0, 0],
     prefillFrom: 2,

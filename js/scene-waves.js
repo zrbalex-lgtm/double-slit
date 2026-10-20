@@ -18,6 +18,8 @@
   const Y1 = YC - D / 2;
   const Y2 = YC + D / 2;
   const EDGE = 25;           // soft wavefront width, px
+  const LX = 120;            // laser aperture x: the light starts here
+  const BEAM_SIGMA = 95;     // laser beam half-width (Gaussian), px
 
   const CAPTIONS = [
     'Волна света подходит к двум щелям',
@@ -48,6 +50,7 @@
 
     // Precompute per-cell geometry
     const X = new Float32Array(n);
+    const BEAMW = new Float32Array(n);   // transverse profile of the laser beam before the barrier
     const R1 = new Float32Array(n);
     const R2 = new Float32Array(n);
     const A1 = new Float32Array(n);
@@ -58,6 +61,7 @@
         const x = (i + 0.5) * CELL;
         const y = (j + 0.5) * CELL;
         X[idx] = x;
+        BEAMW[idx] = Math.exp(-Math.pow((y - YC) / BEAM_SIGMA, 2) / 2);
         if (x > BX) {
           R1[idx] = Math.hypot(x - BX, y - Y1);
           R2[idx] = Math.hypot(x - BX, y - Y2);
@@ -88,10 +92,10 @@
     let t = 0;
     let explainT0 = -1e9;     // real time of the explanation click
     let patternT0 = 0;      // sim time when the pattern starts to fade in
-    const T_ARRIVE = SX / C; // sim time when the wave reaches the screen
+    const T_ARRIVE = (SX - LX) / C; // sim time when the wave reaches the screen
 
     function renderField() {
-      const front = C * t;      // plane-wave front x
+      const front = LX + C * t; // laser wavefront x
       const R = front - BX;     // radius reached past the barrier
       const ph = OMEGA * t;
       for (let idx = 0; idx < n; idx++) {
@@ -100,8 +104,8 @@
         let live = true;
         if (x < BX) {
           const e = front - x;
-          if (e <= 0) live = false;
-          else u = Math.sin(K * x - ph) * Math.min(1, e / EDGE);
+          if (e <= 0 || x < LX) live = false;
+          else u = Math.sin(K * x - ph) * Math.min(1, e / EDGE) * BEAMW[idx];
         } else {
           let v = 0, norm = 0;
           const r1 = R1[idx], r2 = R2[idx];
@@ -118,18 +122,18 @@
         }
         const o = idx * 4;
         if (!live) {
-          px[o] = 4; px[o + 1] = 7; px[o + 2] = 14;
+          px[o] = 8; px[o + 1] = 7; px[o + 2] = 6;
         } else if (u >= 0) {
-          // Crest: navy -> cyan -> white
-          px[o] = 12 + 218 * u * u;
-          px[o + 1] = 24 + 226 * u;
-          px[o + 2] = 48 + 207 * u;
+          // Crest: near black -> laser yellow -> pale yellow
+          px[o] = 8 + 247 * Math.min(1, u * 1.2);
+          px[o + 1] = 7 + 210 * u;
+          px[o + 2] = 6 + 120 * u * u;
         } else {
-          // Trough: navy -> black
+          // Trough: stays near black
           const q = 1 + u;
-          px[o] = 12 * q;
-          px[o + 1] = 24 * q;
-          px[o + 2] = 48 * q;
+          px[o] = 8 * q;
+          px[o + 1] = 7 * q;
+          px[o + 2] = 6 * q;
         }
         px[o + 3] = 255;
       }
@@ -141,7 +145,7 @@
     function drawPattern() {
       const p = Math.max(0, Math.min(1, (t - patternT0) / 1.5));
       for (let y = 0; y < H; y += 2) {
-        ctx.fillStyle = 'rgba(215, 245, 255,' + (prof[y] * p).toFixed(3) + ')';
+        ctx.fillStyle = 'rgba(255, 236, 140,' + (prof[y] * p).toFixed(3) + ')';
         ctx.fillRect(SX, y, SW, 2);
       }
       const x0 = SX + SW + 6;
@@ -151,9 +155,9 @@
       for (let y = 0; y < H; y += 2) ctx.lineTo(x0 + prof[y] * 130 * p, y);
       ctx.lineTo(x0, H);
       ctx.closePath();
-      ctx.fillStyle = 'rgba(79, 195, 247, 0.25)';
+      ctx.fillStyle = 'rgba(255, 210, 60, 0.22)';
       ctx.fill();
-      ctx.strokeStyle = '#4fc3f7';
+      ctx.strokeStyle = '#ffd23f';
       ctx.lineWidth = 3;
       ctx.stroke();
       ctx.restore();
@@ -170,6 +174,28 @@
       // Screen
       ctx.fillStyle = '#2a3040';
       ctx.fillRect(SX, 0, SW, H);
+      // Laser: a box with a glowing aperture on the left
+      ctx.save();
+      const g = ctx.createLinearGradient(0, YC - 60, 0, YC + 60);
+      g.addColorStop(0, '#3a414d');
+      g.addColorStop(0.5, '#59616f');
+      g.addColorStop(1, '#2b3039');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.roundRect(-20, YC - 58, LX + 14, 116, 10);
+      ctx.fill();
+      ctx.fillStyle = '#1b1f26';
+      ctx.fillRect(LX - 10, YC - 22, 16, 44);
+      const a = ctx.createRadialGradient(LX + 6, YC, 0, LX + 6, YC, 60);
+      a.addColorStop(0, 'rgba(255, 240, 150, 0.95)');
+      a.addColorStop(1, 'rgba(255, 200, 40, 0)');
+      ctx.fillStyle = a;
+      ctx.beginPath();
+      ctx.arc(LX + 6, YC, 60, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffcf33';
+      ctx.fillRect(14, YC - 40, 26, 6);
+      ctx.restore();
     }
 
     function ease(x) {

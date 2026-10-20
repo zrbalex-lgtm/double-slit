@@ -34,7 +34,38 @@
     });
   }
 
+  // Fade to black between slides: fade out, switch, fade in. Steps inside a slide are instant.
+  const fader = document.createElement('div');
+  fader.id = 'fader';
+  document.body.appendChild(fader);
+  const FADE_MS = 450;
+  let fading = false;
+  function withFade(go) {
+    if (fading) return;
+    fading = true;
+    fader.classList.add('on');
+    setTimeout(function () {
+      go();
+      requestAnimationFrame(function () {
+        fader.classList.remove('on');
+        setTimeout(function () { fading = false; }, FADE_MS);
+      });
+    }, FADE_MS);
+  }
+  function goNext() {
+    if (fading) return;
+    if (Reveal.availableFragments().next) Reveal.next();
+    else if (!Reveal.isLastSlide()) withFade(function () { Reveal.next(); });
+  }
+  function goPrev() {
+    if (fading) return;
+    if (Reveal.availableFragments().prev) Reveal.prev();
+    else if (!Reveal.isFirstSlide()) withFade(function () { Reveal.prev(); });
+  }
+
   Reveal.initialize({
+    // Clicker and keyboard: right / PageDown / Space / N forward, left / PageUp / P back
+    keyboard: { 39: goNext, 34: goNext, 32: goNext, 78: goNext, 40: goNext, 37: goPrev, 33: goPrev, 80: goPrev, 38: goPrev },
     width: 1600,
     height: 900,
     margin: 0,
@@ -45,7 +76,7 @@
     controls: false,
     progress: false,
     hash: true,
-    transition: 'fade',
+    transition: 'none',
     backgroundTransition: 'none',
     plugins: [RevealNotes]
   });

@@ -641,24 +641,60 @@
     canvas.addEventListener('mouseleave', function () { mouse = null; });
 
     // Guided tour while the mouse is idle; key G pauses / resumes it
-    const TOUR_IDLE = 5000, TOUR_STEP = 7500;
-    let tourOn = true, tourI = 0, tourT0 = 0;
+    // Tour starts after 10 s without mouse movement, 15 s per element; hover needs 2 s of rest
+    const TOUR_IDLE = 10000, TOUR_STEP = 15000, HOVER_DELAY = 2000;
+    let tourOn = true, tourI = -1, tourT0 = 0, sceneT0 = performance.now();
+    let hoverId = null, hoverSince = 0;
     window.addEventListener('keydown', function (e) {
       if ((e.key === 'g' || e.key === 'G') && canvas.offsetParent !== null) tourOn = !tourOn;
     });
 
     function activeRegion(now) {
+      const lastActivity = Math.max(sceneT0, mouseT);
       if (mouse && now - mouseT < TOUR_IDLE) {
+        // Hover: the card appears only after the mouse rests on the same element for a moment
         const r = hitTest(mouse.x, mouse.y);
-        tourT0 = now;
-        return r;
+        const id = r ? r.id : null;
+        if (id !== hoverId) { hoverId = id; hoverSince = now; }
+        tourI = -1;
+        return r && now - hoverSince >= HOVER_DELAY ? r : null;
       }
-      if (!tourOn) return null;
-      if (now - tourT0 > TOUR_STEP) {
+      hoverId = null;
+      if (!tourOn || now - lastActivity < TOUR_IDLE) return null;
+      if (tourI < 0 || now - tourT0 > TOUR_STEP) {
         tourI = (tourI + 1) % GLOSSARY_TOUR.length;
         tourT0 = now;
       }
       return regionFor(GLOSSARY_TOUR[tourI]);
+    }
+
+    // Dim everything except the element being explained
+    function spotlight(r, now) {
+      const a = Math.min(1, (now - cardT0) / 600) * 0.62;
+      if (r.shape === 'motes') return;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 3, 10,' + a.toFixed(3) + ')';
+      ctx.beginPath();
+      if (r.shape === 'lattice') {
+        // keep the edges (where the lattice shows), dim the busy middle
+        ctx.ellipse(RING.cx, RING.cy, RING.rx * 1.08, RING.ry * 1.08, 0, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
+      ctx.rect(0, 0, W, H);
+      if (r.shape === 'circle') {
+        ctx.moveTo(r.x + r.r + 14, r.y);
+        ctx.arc(r.x, r.y, r.r + 14, 0, TAU);
+      } else if (r.shape === 'rect') {
+        ctx.roundRect(r.x - 14, r.y - 14, r.w + 28, r.h + 28, 14);
+      } else {
+        const k = r.shape === 'ring' ? 1.1 : 0.88;
+        ctx.moveTo(RING.cx + RING.rx * k, RING.cy);
+        ctx.ellipse(RING.cx, RING.cy, RING.rx * k, RING.ry * k, 0, 0, TAU);
+      }
+      ctx.fill('evenodd');
+      ctx.restore();
     }
 
     let t = 0;
@@ -681,6 +717,7 @@
       const id = r ? r.id : null;
       if (id !== shownId) { shownId = id; cardT0 = now; }
       if (r) {
+        spotlight(r, now);
         highlight(r, now);
         card(r, now);
       }
@@ -695,6 +732,14 @@
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { draw(0); });
     draw(0);
 
-    return { start: loop.start, stop: loop.stop, setStep: function () {} };
+    return {
+      start: function () {
+        sceneT0 = performance.now();
+        tourI = -1;
+        loop.start();
+      },
+      stop: loop.stop,
+      setStep: function () {}
+    };
   });
 })();
