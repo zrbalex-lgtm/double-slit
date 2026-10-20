@@ -11,7 +11,7 @@
   const D = 160;             // slit separation, px
   const SLIT = 18;           // slit opening drawn in the barrier
   const LAM = 44;            // wavelength, px
-  const C = 170;             // wave speed, px/s
+  const C = 70;              // wave speed, px/s (calm enough to follow the crests)
   const CELL = 4;            // field grid cell, px
   const K = 2 * Math.PI / LAM;
   const OMEGA = K * C;
@@ -237,17 +237,24 @@
     }
 
     // One case of the explanation: wave 1 + wave 2 = result
-    function drawCase(x, y, title, shift, resultLabel, glowColor, now) {
+    // r1, r2: distances from the two slits to the screen point this case explains.
+    // The panel waves at the marker oscillate exactly like the waves arriving at that point.
+    function drawCase(x, y, title, r1, r2, resultLabel, glowColor) {
       const w = 270, h = 64, gap = 92;
-      const phase = now / 1000 * 2.2;
-      const mx = x + w * 0.375;   // marker sits on a crest of wave 1 at phase 0
+      const mx = x + w * 0.375;
+      const c = (mx - x) / w * 4 * Math.PI;
+      const phase = c - K * (BX + r1) + OMEGA * t;
+      // Path difference as a phase; snapped to exactly 0 or half a wave (the fringe it explains)
+      const raw = K * (r1 - r2);
+      const shift = Math.round(raw / Math.PI) * Math.PI;
       bigText(title, x + w / 2 + 30, y, 26, glowColor);
       const ya = y + 70, yb = ya + gap, yr = yb + gap + 18;
       const va = waveStrip(x, ya, w, h, 1, phase, '#a8c86a', mx);
       bigText('+', x - 34, (ya + yb) / 2, 40, '#ffffff');
       const vb = waveStrip(x, yb, w, h, 1, phase + shift, '#4fb3d9', mx);
       bigText('=', x - 34, (yb + yr) / 2 + 6, 40, '#ffffff');
-      waveStrip(x, yr, w, h, shift === 0 ? 2 : 0, phase, '#ffffff', mx);
+      // Sum of two equal sines shifted by `shift`: amplitude 2cos(shift/2), phase shifted by shift/2
+      waveStrip(x, yr, w, h, Math.abs(2 * Math.cos(shift / 2)), phase + shift / 2 + (Math.cos(shift / 2) < 0 ? Math.PI : 0), '#ffffff', mx);
       // marker and arrows showing the displacement of each wave at the marker
       ctx.save();
       ctx.setLineDash([5, 6]);
@@ -279,8 +286,9 @@
       ctx.roundRect(px, 30, pw, 830, 16);
       ctx.fill();
       ctx.stroke();
-      drawCase(px + 64, 75, 'светлая полоса', 0, '2', '#fff3a0', now);
-      drawCase(px + 64, 485, 'тёмная полоса', Math.PI, '0', '#7f8da8', now);
+      const d = function (y, sy) { return Math.hypot(SX - BX, y - sy); };
+      drawCase(px + 64, 75, 'светлая полоса', d(Y_BRIGHT, Y1), d(Y_BRIGHT, Y2), '2', '#fff3a0');
+      drawCase(px + 64, 485, 'тёмная полоса', d(Y_DARK, Y1), d(Y_DARK, Y2), '0', '#7f8da8');
       // Links from fringes on the screen to the two cases
       const sx = (SX + SW / 2) * k, sb = oy + Y_BRIGHT * k, sd = oy + Y_DARK * k;
       [[sb, 150, '#fff3a0'], [sd, 560, '#9aa8c4']].forEach(function (l) {

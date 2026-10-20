@@ -203,9 +203,9 @@
   }
 
   // Where a flying electron meets the barrier; inside the slit zone it goes on, otherwise it hits the wall
-  function aimAtBarrier(sigmaX) {
+  function aimAtBarrier(sigmaX, sigmaY) {
     const x = gauss() * sigmaX;
-    const y = Math.max(0.25, Math.min(BAR_H - 0.12, BEAM_Y + gauss() * 0.42));
+    const y = Math.max(0.25, Math.min(BAR_H - 0.12, BEAM_Y + gauss() * (sigmaY || 0.42)));
     const pass = Math.abs(x) < SLIT_X + 0.25 && y > SLIT_Y0 && y < SLIT_Y1;
     return { x: x, y: y, pass: pass };
   }
@@ -1306,7 +1306,7 @@
           fireBullet(now);
           if (r < 5) Sfx.shot(0.6);
         } else if (beam) {
-          const aim = aimAtBarrier(1.1);
+          const aim = aimAtBarrier(0.37, 0.14);   // narrow beam
           const f = { born: now, aim: aim, wall: !aim.pass, hit: sampleHit(kind) };
           const V = 9;
           f.t1 = Math.hypot(aim.x, aim.y - BEAM_Y, Z_BAR - MUZZLE.z) / V;
