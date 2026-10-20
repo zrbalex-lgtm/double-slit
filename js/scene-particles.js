@@ -1,6 +1,6 @@
 /* Particle scenes in perspective from behind and above the source, with a launch log on the right.
    'bullets'    : machine gun swinging on a tripod; most bullets hit the wall, the rest make two bands
-   'beam'       : a continuous electron beam, like light: interference fringes appear on the screen
+   'beam'       : a dense stream of electrons: some hit the wall, the rest build fringes on the screen
    'electrons'  : path unknown, interference fringes build up
    'which-path' : detectors at the slits record the path, two bands
    'twins'      : each photon becomes a twin pair at the slit; the twin reveals the path, two bands
@@ -202,9 +202,17 @@
     return 10 + Math.random() * (TH - 20);
   }
 
+  // Where a flying electron meets the barrier; inside the slit zone it goes on, otherwise it hits the wall
+  function aimAtBarrier(sigmaX) {
+    const x = gauss() * sigmaX;
+    const y = Math.max(0.25, Math.min(BAR_H - 0.12, BEAM_Y + gauss() * 0.42));
+    const pass = Math.abs(x) < SLIT_X + 0.25 && y > SLIT_Y0 && y < SLIT_Y1;
+    return { x: x, y: y, pass: pass };
+  }
+
   // Draw a hit: texture position, slit (-1/+1, or 0 when unknown), and the flight path for bullets
   function sampleHit(kind) {
-    if (kind === 'electrons') {
+    if (kind === 'electrons' || kind === 'beam') {
       return { tx: TW / 2 + rejection(fringes), ty: randomTy(), slit: 0 };
     }
     const slit = Math.random() < 0.5 ? -1 : 1;
@@ -255,6 +263,7 @@
       const eraser = kind === 'eraser';
       const twins = kind === 'twins' || kind === 'delayed' || eraser;
       const beam = kind === 'beam';
+      const particleKind = kind === 'electrons' || kind === 'which-path';   // electrons fly as particles
       const shiftX = opts.noLog ? W / 2 - FRAME_X : 0;   // center the setup when there is no log
       const TWIN_DET = kind === 'delayed' ? TWIN_DET_FAR : TWIN_DET_NEAR;
       const TWIN_DELAY = opts.twinDelay || 1;   // twin flight time relative to its partner's
@@ -292,28 +301,6 @@
       wallTex.height = WTH;
       const wctx = wallTex.getContext('2d');
 
-      // Beam state
-      let beamT0 = 0;
-      const glowTex = beam ? makeGlowTex() : null;
-
-      function makeGlowTex() {
-        const c = document.createElement('canvas');
-        c.width = TW;
-        c.height = TH;
-        const g = c.getContext('2d');
-        for (let k = 0; k < TW; k++) {
-          const b = fringes(k - TW / 2);
-          g.fillStyle = 'rgba(140, 255, 195,' + (0.85 * b).toFixed(3) + ')';
-          g.fillRect(k, 0, 1, TH);
-        }
-        // Grain: it is made of countless electrons
-        g.fillStyle = 'rgba(230, 255, 240, 0.5)';
-        for (let i = 0; i < 9000; i++) {
-          const x = TW / 2 + rejection(fringes);
-          g.fillRect(x, Math.random() * TH, 1.6, 1.6);
-        }
-        return c;
-      }
 
       function rate() {
         return opts.rates[Math.min(step, opts.rates.length - 1)];
@@ -451,7 +438,7 @@
           const a = 1 - (now - sp.born) / 260;
           const q = project(sp.x, sp.y, Z_BAR - 0.02);
           ctx.globalAlpha = Math.max(0, a);
-          ctx.fillStyle = '#ffd27a';
+          ctx.fillStyle = sp.c || '#ffd27a';
           ctx.beginPath();
           ctx.arc(q.x, q.y, (0.04 + (1 - a) * 0.12) * q.s, 0, Math.PI * 2);
           ctx.fill();
@@ -459,61 +446,8 @@
         ctx.restore();
       }
 
-      // Continuous beam: a glowing stream from the gun that spreads over both slits
-      function drawBeamStream(now) {
-        if (step < 1) return;
-        const z0 = Z_GUN + 0.35, z1 = Z_BAR - 0.02;
-        const w0 = 0.1, w1 = SLIT_X + 0.35;
-        ctx.save();
-        for (let i = 0; i < 24; i++) {
-          const u0 = i / 24, u1 = (i + 1) / 24;
-          const za = z0 + (z1 - z0) * u0, zb = z0 + (z1 - z0) * u1;
-          const wa = w0 + (w1 - w0) * u0, wb = w0 + (w1 - w0) * u1;
-          const pulse = 0.5 + 0.5 * Math.sin((u0 * 9 - now / 140) * Math.PI);
-          ctx.globalAlpha = 0.18 + 0.22 * pulse;
-          poly([[-wa, BEAM_Y, za], [wa, BEAM_Y, za], [wb, BEAM_Y, zb], [-wb, BEAM_Y, zb]], '#7fffb0', null);
-        }
-        ctx.restore();
-      }
 
-      // Continuous ripples from both slits toward the screen
-      function drawBeamRipples(now) {
-        if (step < 1) return;
-        const L = Z_SCR - Z_BAR, GAP = 0.55;
-        ctx.save();
-        ctx.lineWidth = 2.5;
-        ctx.strokeStyle = look.glow;
-        const r0 = ((now - beamT0) / 1000 * 2.2) % GAP;
-        const reach = Math.min(L, (now - beamT0) / 1000 * 2.2);
-        for (let r = r0; r < reach; r += GAP) {
-          ctx.globalAlpha = 0.5 * (1 - r / L * 0.75);
-          [-SLIT_X, SLIT_X].forEach(function (cx) {
-            ctx.beginPath();
-            for (let k = 0; k <= 40; k++) {
-              const ang = (k / 40 - 0.5) * RIPPLE_SPAN;
-              const x = cx + r * Math.sin(ang);
-              const z = Z_BAR + BAR_T + r * Math.cos(ang);
-              if (z > Z_SCR || Math.abs(x) > SCR_W / 2) continue;
-              const q = project(x, BEAM_Y, z);
-              if (k === 0) ctx.moveTo(q.x, q.y);
-              else ctx.lineTo(q.x, q.y);
-            }
-            ctx.stroke();
-          });
-        }
-        ctx.restore();
-      }
 
-      // Screen glow grows once the beam reaches the screen
-      function updateBeamScreen(now) {
-        if (step < 1) return;
-        const travel = (Z_SCR - Z_BAR) / 2.2 * 1000;
-        const p = Math.max(0, Math.min(1, (now - beamT0 - travel) / 3500));
-        tctx.clearRect(0, 0, TW, TH);
-        tctx.globalAlpha = p;
-        tctx.drawImage(glowTex, 0, 0);
-        tctx.globalAlpha = 1;
-      }
 
       function glowDot(x, y, z, radius, color, alpha) {
         const q = project(x, y, z);
@@ -673,6 +607,60 @@
         });
       }
 
+      const MUZZLE = { x: 0, y: BEAM_Y, z: Z_GUN + 0.35 };
+
+      // Electron as a particle: a bright dot with a short trail, flying to a random point of the barrier
+      function drawParticles(now) {
+        ctx.save();
+        for (const f of flights) {
+          const p = (now - f.born) / (f.dur * SPLIT);
+          if (p > 1 || !f.aim) continue;
+          const fade = f.aim.pass && p > 0.85 ? (1 - p) / 0.15 : 1;
+          for (let k = 5; k >= 0; k--) {
+            const u = Math.max(0, p - k * 0.035);
+            const q = project(MUZZLE.x + (f.aim.x - MUZZLE.x) * u, MUZZLE.y + (f.aim.y - MUZZLE.y) * u,
+              MUZZLE.z + (Z_BAR - 0.02 - MUZZLE.z) * u);
+            ctx.globalAlpha = fade * (k === 0 ? 1 : 0.35 * (1 - k / 6));
+            ctx.fillStyle = k === 0 ? '#eafff2' : look.glow;
+            ctx.beginPath();
+            ctx.arc(q.x, q.y, Math.max(2.5, (k === 0 ? 0.085 : 0.07) * q.s), 0, Math.PI * 2);
+            ctx.fill();
+          }
+          const q = project(MUZZLE.x + (f.aim.x - MUZZLE.x) * p, MUZZLE.y + (f.aim.y - MUZZLE.y) * p,
+            MUZZLE.z + (Z_BAR - 0.02 - MUZZLE.z) * p);
+          ctx.globalAlpha = 0.45 * fade;
+          const g = ctx.createRadialGradient(q.x, q.y, 0, q.x, q.y, 0.3 * q.s);
+          g.addColorStop(0, look.glow);
+          g.addColorStop(1, look.glow + '00');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, 0.3 * q.s, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // Beam: many small electrons flying straight; `far` selects the part beyond the barrier
+      function drawBeamDots(now, far) {
+        ctx.save();
+        ctx.fillStyle = '#c9ffe0';
+        for (const f of flights) {
+          const t = (now - f.born) / 1000;
+          let a, b, u;
+          if (t < f.t1) {
+            if (far) continue;
+            a = MUZZLE; b = { x: f.aim.x, y: f.aim.y, z: Z_BAR - 0.02 }; u = t / f.t1;
+          } else {
+            if (!far || !f.aim.pass) continue;
+            a = { x: f.aim.x, y: f.aim.y, z: Z_BAR + BAR_T }; b = f.end; u = Math.min(1, (t - f.t1) / f.t2);
+          }
+          const q = project(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u, a.z + (b.z - a.z) * u);
+          ctx.globalAlpha = 0.85;
+          ctx.fillRect(q.x - 1.5, q.y - 1.5, 3, 3);
+        }
+        ctx.restore();
+      }
+
       // Before the barrier: a fuzzy wave packet that spreads until it covers both slits
       function drawPackets(now) {
         ctx.save();
@@ -705,7 +693,7 @@
         ctx.lineWidth = 2.5;
         for (const f of flights) {
           const p = ((now - f.born) / f.dur - SPLIT) / (1 - SPLIT);
-          if (p < 0 || p > 1) continue;
+          if (p < 0 || p > 1 || f.wall) continue;
           const r = 0.15 + p * (Z_SCR - Z_BAR);
           ctx.globalAlpha = 0.6 * (1 - p * 0.7);
           ctx.strokeStyle = look.glow;
@@ -1101,13 +1089,13 @@
         lc.restore();
       }
 
-      // Perspective of a card turned around its vertical axis: the right edge is farther away
-      const PANEL = { x: 1120, cy: 445, angle: 0.36, focal: 1700 };
+      // Perspective of a card turned toward the experiment: the left edge is farther away
+      const PANEL = { right: 1575, cy: 445, angle: 0.36, focal: 1700 };
       function panelPoint(u) {
-        const lx = u * CARD_W;
-        const z = lx * Math.sin(PANEL.angle);
+        const d = (1 - u) * CARD_W;           // distance from the near (right) edge
+        const z = d * Math.sin(PANEL.angle);
         const k = PANEL.focal / (PANEL.focal + z);
-        return { x: PANEL.x + lx * Math.cos(PANEL.angle) * k, k: k };
+        return { x: PANEL.right - d * Math.cos(PANEL.angle) * k, k: k };
       }
 
       function drawLog(now) {
@@ -1130,14 +1118,14 @@
           const h = CARD_H * k;
           ctx.drawImage(card, sx, 0, STRIP, CARD_H, p0.x, cy - h / 2, p1.x - p0.x + 0.6, h);
         }
-        // Glowing edge facing us
+        // Glowing near edge
         ctx.strokeStyle = 'rgba(120, 200, 255, 0.35)';
         ctx.lineWidth = 3;
         ctx.shadowColor = '#5ab8ff';
         ctx.shadowBlur = 18;
         ctx.beginPath();
-        ctx.moveTo(a.x + CARD_PAD * a.k, cy - (CARD_H / 2 - CARD_PAD) * a.k);
-        ctx.lineTo(a.x + CARD_PAD * a.k, cy + (CARD_H / 2 - CARD_PAD) * a.k);
+        ctx.moveTo(b.x - CARD_PAD * b.k, cy - (CARD_H / 2 - CARD_PAD) * b.k);
+        ctx.lineTo(b.x - CARD_PAD * b.k, cy + (CARD_H / 2 - CARD_PAD) * b.k);
         ctx.stroke();
         ctx.restore();
       }
@@ -1147,7 +1135,6 @@
         ctx.fillRect(0, 0, W, H);
         ctx.save();
         ctx.translate(shiftX, 0);
-        if (beam) updateBeamScreen(now);
         // Painter's order: far to near
         drawFloor();
         drawScreen();
@@ -1157,14 +1144,12 @@
         } else if (step >= opts.curveStep) {
           drawCurve(now);
         }
-        if (beam) drawBeamRipples(now);
+        if (beam) drawBeamDots(now, true);
         else if (quantum) drawRipples(now);
         else drawBullets(now, true);
         drawBarrier();
-        if (kind === 'bullets') {
-          drawWallMarks();
-          drawSparks(now);
-        }
+        if (kind === 'bullets') drawWallMarks();
+        drawSparks(now);
         if (kind === 'which-path') drawWhichPathDetectors(now);
         if (twins) {
           drawCrystals(now);
@@ -1172,7 +1157,8 @@
           if (eraser) drawEraserOptics(now);
           else drawTwinDetectors(now);
         }
-        if (beam) drawBeamStream(now);
+        if (beam) drawBeamDots(now, false);
+        else if (particleKind) drawParticles(now);
         else if (quantum) drawPackets(now);
         else drawBullets(now, false);
         drawGun(now);
@@ -1252,7 +1238,7 @@
           wctx.fill();
           wctx.fillStyle = 'rgba(200, 205, 215, 0.35)';
           wctx.fillRect(wx - 2.5, wy - 3.2, 3, 1.2);
-          sparks.push({ x: h.end.x, y: h.end.y, born: now });
+          sparks.push({ x: h.end.x, y: h.end.y, born: now, c: '#ffd27a' });
           logRow(now, h, f.born, h.end.x * 10, h.end.y * 10, f.n);
           return;
         }
@@ -1303,13 +1289,12 @@
           sparks = [];
           return;
         }
-        if (beam) return;
         while (count < total) instantHit(now, false, true);
       }
 
       function inFlight() {
         let n = 0;
-        for (const f of flights) if (!f.landed && !(f.hit && f.hit.wall)) n++;
+        for (const f of flights) if (!f.landed && !f.wall && !(f.hit && f.hit.wall)) n++;
         return n;
       }
 
@@ -1320,8 +1305,24 @@
         if (!quantum) {
           fireBullet(now);
           if (r < 5) Sfx.shot(0.6);
+        } else if (beam) {
+          const aim = aimAtBarrier(1.1);
+          const f = { born: now, aim: aim, wall: !aim.pass, hit: sampleHit(kind) };
+          const V = 9;
+          f.t1 = Math.hypot(aim.x, aim.y - BEAM_Y, Z_BAR - MUZZLE.z) / V;
+          if (aim.pass) {
+            const w = texToWorld(f.hit.tx, f.hit.ty);
+            f.end = { x: w.x, y: w.y, z: Z_SCR - 0.02 };
+            f.t2 = Math.hypot(w.x - aim.x, w.y - aim.y, Z_SCR - Z_BAR) / V;
+          }
+          flights.push(f);
         } else if (r < 50) {
-          flights.push({ born: now, dur: r < 5 ? 1300 : 600, hit: sampleHit(kind), passed: false });
+          const f = { born: now, dur: r < 5 ? 1300 : 600, hit: sampleHit(kind), passed: false };
+          if (particleKind) {
+            f.aim = aimAtBarrier(0.85);
+            f.wall = !f.aim.pass;
+          }
+          flights.push(f);
         } else {
           instantHit(now, false);
         }
@@ -1345,6 +1346,25 @@
 
         const still = [];
         for (const f of flights) {
+          if (beam) {
+            const t = (now - f.born) / 1000;
+            if (f.wall) {
+              if (t >= f.t1) {
+                if (Math.random() < 0.25) sparks.push({ x: f.aim.x, y: f.aim.y, born: now, c: look.glow });
+              } else still.push(f);
+            } else if (t >= f.t1 + f.t2) {
+              addHit(now, f.hit, false, f.born);
+            } else still.push(f);
+            continue;
+          }
+          // Electron that missed the slits: it stops on the wall
+          if (f.wall) {
+            if (now - f.born >= f.dur * SPLIT) {
+              sparks.push({ x: f.aim.x, y: f.aim.y, born: now, c: look.glow });
+              if (!busy) Sfx.click(0.25);
+            } else still.push(f);
+            continue;
+          }
           // Reaching the slits: detectors fire, crystals split the photon, bullets pass a slit
           const atWall = quantum ? SPLIT : (f.hit.wall ? 1 : (Z_BAR - f.hit.start.z) / (f.hit.end.z - f.hit.start.z));
           if (!f.passed && now - f.born >= f.dur * atWall) {
@@ -1384,10 +1404,8 @@
         const now = performance.now();
         if (s === 0) clearAll();
         if (step === 0 && s > 0) t0 = now;
-        if (beam && s >= 1 && step < 1) beamT0 = now;
-        if (beam && step === 0 && s >= 2) beamT0 = now - 1e5;
         // Entering mid-sequence (e.g. navigating back): show an accumulated pattern
-        const fast = opts.rates[Math.min(s, opts.rates.length - 1)] >= 20 || (opts.prefillFrom && s >= opts.prefillFrom);
+        const fast = opts.prefillFrom ? s >= opts.prefillFrom : opts.rates[Math.min(s, opts.rates.length - 1)] >= 20;
         if (step === 0 && s > 0 && fast) prefill(opts.maxHits);
         if (s >= opts.curveStep && step < opts.curveStep) curveT0 = now;
         if (eraser && s >= 4) curveT0 = now;
@@ -1423,14 +1441,15 @@
     kind: 'beam',
     captions: [
       'Опыт как со светом, только вместо света — пучок электронов',
-      'Включаем пучок…',
+      'Включаем пучок: летят тысячи электронов…',
       '…и на экране полосы, как у волн! Интерференция'
     ],
-    rates: [0, 0, 0],
+    rates: [0, 900, 900],
+    prefillFrom: 2,
     curveStep: 2,
     curve: 'fringes',
     noLog: true,
-    maxHits: 0
+    maxHits: 7000
   }));
 
   Scenes.register('electrons', build({
