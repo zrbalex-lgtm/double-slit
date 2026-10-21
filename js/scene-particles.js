@@ -909,16 +909,18 @@
 
       // Detectors whose hits are shown on the screen right now (sorting steps)
       // Sorting steps: 3 both pairs by pair color, 4 front pair, 5 front pair split,
-      // 6 back pair in one color, 7 only detector 1, 8 only detector 2, 9 detectors 1 and 2 together
+      // 6 back pair in one color, 7 detectors 1 and 2 together, 8 only detector 1, 9 only detector 2,
+      // 10 all four detectors in full color
       const PAIR_COLOR = { front: '#f4f6fa', back: '#a77bff' };
       const PAIR_DOT = { front: 'rgba(244, 246, 250, 0.9)', back: 'rgba(167, 123, 255, 0.95)' };
       function isFront(g) { return g === 'L' || g === 'R'; }
       function erHighlighted(g) {
         if (step === 3) return true;
         if (step === 4 || step === 5) return isFront(g);
-        if (step === 6 || step >= 9) return !isFront(g);
-        if (step === 7) return g === 'D1';
-        if (step === 8) return g === 'D2';
+        if (step === 6 || step === 7) return !isFront(g);
+        if (step === 8) return g === 'D1';
+        if (step === 9) return g === 'D2';
+        if (step >= 10) return true;
         return false;
       }
       // Color a detector (and its dots) is shown in at the current step
@@ -989,9 +991,10 @@
         if (step === 4) return front ? pairDot : null;
         if (step === 5) return front ? ER_DOT[g] : null;
         if (step === 6) return front ? null : pairDot;
-        if (step === 7) return g === 'D1' ? ER_DOT[g] : null;
-        if (step === 8) return g === 'D2' ? ER_DOT[g] : null;
-        return front ? null : ER_DOT[g];
+        if (step === 7) return front ? null : ER_DOT[g];
+        if (step === 8) return g === 'D1' ? ER_DOT[g] : null;
+        if (step === 9) return g === 'D2' ? ER_DOT[g] : null;
+        return ER_DOT[g];
       }
 
       function drawDot(hit) {
@@ -1047,9 +1050,13 @@
           strokeCurve(rightBand, p, ER_COLOR.R, 4);
         }
         if (step === 6) strokeCurve(CURVES.twoBands, p, PAIR_COLOR.back, 4);
-        if (step === 7 || step >= 9) strokeCurve(blueFringe, p, ER_COLOR.D1, 4);
-        if (step === 8 || step >= 9) strokeCurve(redFringe, p, ER_COLOR.D2, 4);
-        if (step >= 9) strokeCurve(CURVES.twoBands, p, 'rgba(255, 255, 255, 0.95)', 3);
+        if (step === 7) strokeCurve(CURVES.twoBands, p, PAIR_COLOR.back, 4);
+        if (step >= 10) {
+          strokeCurve(leftBand, p, ER_COLOR.L, 3);
+          strokeCurve(rightBand, p, ER_COLOR.R, 3);
+        }
+        if (step === 8 || step >= 10) strokeCurve(blueFringe, p, ER_COLOR.D1, step >= 10 ? 3 : 4);
+        if (step === 9 || step >= 10) strokeCurve(redFringe, p, ER_COLOR.D2, step >= 10 ? 3 : 4);
         ctx.restore();
       }
 
@@ -1611,11 +1618,12 @@
       'Только передняя пара: две полосы',
       'Раскрасим её: зелёная полоса от левой щели, красная от правой',
       'Задняя пара (1 и 2): тоже две полосы',
+      'Синие и жёлтые вместе — всё ещё две полосы',
       'Только детектор 1: полосы!',
       'Только детектор 2: тоже полосы, но сдвинутые на полшага',
-      'Детекторы 1 и 2 вместе: полосы маскируют друг друга'
+      'Все четыре детектора вместе'
     ],
-    rates: [0, 0.6, 700, 0, 0, 0, 0, 0, 0, 0],
+    rates: [0, 0.6, 700, 0, 0, 0, 0, 0, 0, 0, 0],
     prefillFrom: 2,
     curveStep: 99,
     twinDelay: 2.6,
